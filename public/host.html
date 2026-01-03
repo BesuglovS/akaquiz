@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>АкаКвиз</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="host-body">
+    <div class="host-wrapper">
+      <header id="setup-area" class="card">
+        <h2>⚙️ Настройка квиза</h2>
+        <div class="setup-controls">
+          <select id="quiz-select" class="custom-select"></select>
+          <button id="load-btn" class="btn secondary">Загрузить вопросы</button>
+        </div>
+      </header>
+
+      <section id="lobby" class="card">
+        <div class="card-header">
+          <h3>👥 Участники в лобби</h3>
+          <span id="player-count-badge" class="badge">0</span>
+        </div>
+        <div id="player-names" class="player-grid">
+          <p class="empty-msg">Ожидание первого игрока...</p>
+        </div>
+        <button id="start-game-btn" class="btn primary" disabled>
+          Сначала загрузите квиз
+        </button>
+      </section>
+
+      <main id="game-area" class="card main-game hidden">
+        <button
+          id="reset-btn"
+          class="btn secondary hidden"
+          style="margin-top: 20px; background: #fab1a0"
+        >
+          Выбрать другой квиз
+        </button>
+
+        <div class="game-header">
+          <div id="timer-display" class="timer-circle">--</div>
+          <div class="game-info">
+            <h1 id="question-area">Загрузка вопроса...</h1>
+          </div>
+        </div>
+
+        <div id="stats-container" class="stats-visualizer"></div>
+
+        <div class="controls">
+          <button id="next-btn" class="btn primary">Следующий вопрос →</button>
+        </div>
+      </main>
+
+      <aside id="leaderboard-area" class="card hidden">
+        <h3>🏆 Таблица лидеров</h3>
+        <ul id="leaderboard-list"></ul>
+      </aside>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+
+      // Элементы
+      const setupArea = document.getElementById("setup-area");
+      const lobby = document.getElementById("lobby");
+      const gameArea = document.getElementById("game-area");
+      const leaderboardArea = document.getElementById("leaderboard-area");
+
+      const quizSelect = document.getElementById("quiz-select");
+      const loadBtn = document.getElementById("load-btn");
+      const nextBtn = document.getElementById("next-btn");
+      const qArea = document.getElementById("question-area");
+      const timerDisp = document.getElementById("timer-display");
+      const statsCont = document.getElementById("stats-container");
+      const playerNamesDiv = document.getElementById("player-names");
+      const playerCountSpan = document.getElementById("player-count-badge");
+
+      // Инициализация
+      socket.emit("getQuizList");
+
+      socket.on("quizList", (files) => {
+        quizSelect.innerHTML = files
+          .map((f) => `<option value="${f}">${f}</option>`)
+          .join("");
+      });
+
+      socket.on("playerListUpdate", (players) => {
+        playerCountSpan.innerText = players.length;
+        if (players.length > 0) {
+          playerNamesDiv.innerHTML = players
+            .map((name) => `<div class="player-chip">${name}</div>`)
+            .join("");
+        }
+      });
+
+      loadBtn.onclick = () => {
+        if (quizSelect.value) socket.emit("selectQuiz", quizSelect.value);
+      };
+
+      socket.on("quizReady", (fileName) => {
+        // Когда сервер подтвердил загрузку файла
+        loadBtn.innerText = "✅ Загружено: " + fileName;
+        loadBtn.classList.add("success");
+
+        // Активируем кнопку старта и меняем её текст
+        const startBtn = document.getElementById("start-game-btn");
+        startBtn.disabled = false;
+        startBtn.innerText = "Начать квиз: " + fileName;
+
+        // Можно подсветить кнопку старта, чтобы она привлекала внимание
+        startBtn.style.animation = "pulse 1.5s infinite";
+      });
+
+      // Старт игры (первый вопрос)
+      document.getElementById("start-game-btn").onclick = () =>
+        socket.emit("nextQuestion");
+      nextBtn.onclick = () => socket.emit("nextQuestion");
+
+      function formatContent(dataObj) {
+        let html = `<span>${dataObj.text || ""}</span>`;
+        if (dataObj.img) {
+          html += `<img src="${dataObj.img}" class="content-img">`;
+        }
+        return html;
+      }
+
+      socket.on("updateQuestion", (data) => {
+        setupArea.classList.add("hidden");
+        lobby.classList.add("hidden");
+        gameArea.classList.remove("hidden");
+
+        // Отображаем текст вопроса и картинку вопроса
+        qArea.innerHTML = `
+        <div class="question-title">${data.question}</div>
+        ${
+          data.questionImg
+            ? `<img src="${data.questionImg}" class="main-question-img">`
+            : ""
+        }
+    `;
+
+        // Передаем массив объектов опций в рендер графиков
+        renderStats(data.options);
+
+        nextBtn.innerText = "Остановить время"; // Текст во время вопроса
+        nextBtn.classList.remove("secondary");
+        nextBtn.classList.add("primary");
+      });
+
+      socket.on("timerTick", (time) => {
+        timerDisp.innerText = time;
+        timerDisp.style.borderColor = time <= 5 ? "#e74c3c" : "#6c5ce7";
+      });
+
+      socket.on("updateStats", (votes) => {
+        const bars = document.querySelectorAll(".bar-fill");
+        bars.forEach((bar, index) => {
+          const count = votes[index] || 0;
+          bar.style.height = `${Math.min(count * 20, 100)}%`;
+          bar.setAttribute("data-count", count);
+        });
+      });
+
+      function renderStats(options) {
+        statsCont.innerHTML = options
+          .map(
+            (opt, i) => `
+        <div class="stat-column">
+            <div class="bar-wrapper">
+                <div class="bar-fill" style="height: 0%" data-count="0"></div>
+            </div>
+            <div class="bar-label">
+                ${
+                  opt.img
+                    ? `<img src="${opt.img}" style="width:30px; height:30px; object-fit:cover; border-radius:4px; display:block; margin:0 auto 5px;">`
+                    : ""
+                }
+                ${opt.text}
+            </div> 
+        </div>
+    `
+          )
+          .join("");
+      }
+
+      socket.on("timeOver", (data) => {
+        nextBtn.innerText = "Следующий вопрос →"; // Когда время вышло
+        leaderboardArea.classList.remove("hidden");
+        updateLeaderboard(data.scores);
+
+        nextBtn.innerText = "Следующий вопрос →"; // Текст после завершения
+        nextBtn.classList.remove("primary");
+        nextBtn.classList.add("secondary");
+      });
+
+      socket.on("quizFinished", (scores) => {
+        qArea.innerHTML = "🏁 Квиз завершен!";
+        nextBtn.style.display = "none";
+        updateLeaderboard(scores);
+      });
+
+      function updateLeaderboard(scores) {
+        // Получаем массив и сортируем. 0 теперь будет корректно участвовать в сортировке
+        const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+        const list = document.getElementById("leaderboard-list");
+
+        // Убираем условие "if (sorted.length === 0)" или делаем его только для случая,
+        // когда в игре вообще нет людей
+        if (Object.keys(scores).length === 0) {
+          list.innerHTML = "<li>Ждем подключения игроков...</li>";
+          return;
+        }
+
+        list.innerHTML = sorted
+          .map(([name, val], i) => {
+            let placeClass = "";
+            if (i === 0 && val > 0) placeClass = "place-1 winner-anim";
+            // Анимация только если есть очки
+            else if (i === 1 && val > 0) placeClass = "place-2";
+            else if (i === 2 && val > 0) placeClass = "place-3";
+
+            return `
+            <li class="rank-item ${placeClass}">
+                <span class="rank-icon"></span>
+                <span class="rank">${i + 1}</span>
+                <span class="name">${name}</span>
+                <span class="score">${val}</span>
+            </li>`;
+          })
+          .join("");
+      }
+
+      const resetBtn = document.getElementById("reset-btn");
+
+      // При клике на "Следующий" текст кнопки может меняться
+      nextBtn.onclick = () => socket.emit("nextQuestion");
+
+      // Слушаем событие завершения
+      socket.on("quizFinished", (scores) => {
+        qArea.innerHTML = "🏁 Квиз завершен! Поздравляем победителей!";
+        nextBtn.classList.add("hidden");
+        resetBtn.classList.remove("hidden");
+        updateLeaderboard(scores); // Финальный рейтинг
+      });
+
+      resetBtn.onclick = () => {
+        socket.emit("resetGame");
+        location.reload(); // Простой способ вернуть хоста в начало
+      };
+    </script>
+  </body>
+</html>
