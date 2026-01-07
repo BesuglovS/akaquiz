@@ -30,35 +30,81 @@ function loadQuizFile(fileName) {
   const content = fs.readFileSync(filePath, "utf-8").replace(/\r\n/g, "\n");
   const blocks = content.split("\n\n").filter((block) => block.trim() !== "");
 
-  return blocks.map((block) => {
-    const lines = block.split("\n").map((l) => l.trim());
+  // Вспомогательная функция: извлекает текст и первое изображение из строки
+  function parseContent(text) {
+    const imgMatch = text.match(/\[img:(.*?)\]/);
+    let imgSrc = null;
+    let cleanText = text;
 
-    const parseLine = (text) => {
-      const imgMatch = text.match(/\[img:(.*?)\]/);
-      if (!imgMatch) return { text: text.trim(), img: null };
-
-      let imgSrc = imgMatch[1].trim();
-
-      // Проверяем: если это не внешняя ссылка (http/https),
-      // значит это локальный файл в папке /media/
-      if (!imgSrc.startsWith("http")) {
+    if (imgMatch) {
+      imgSrc = imgMatch[1].trim();
+      if (!imgSrc.startsWith("http") && !imgSrc.startsWith("https")) {
         imgSrc = "/media/" + imgSrc;
       }
-
-      return {
-        text: text.replace(/\[img:.*?\]/g, "").trim(),
-        img: imgSrc,
-      };
-    };
-
-    const questionData = parseLine(lines[0].replace("Вопрос:", ""));
-    const rawOptions = lines[1].replace("Варианты:", "").split(",");
+      // Удаляем ВСЕ [img:...] теги из текста, чтобы остался только чистый текст
+      cleanText = text.replace(/\[img:.*?\]/g, "").trim();
+    }
 
     return {
-      question: questionData.text,
-      questionImg: questionData.img,
-      options: rawOptions.map((opt) => parseLine(opt)),
-      correct: parseInt(lines[2].replace("Ответ:", "").trim()),
+      text: cleanText,
+      img: imgSrc, // null, если нет изображения
+    };
+  }
+
+  return blocks.map((block) => {
+    const lines = block.split("\n");
+
+    // --- Вопрос ---
+    let questionLine = "";
+    let questionImg = null;
+    let questionText = "";
+
+    const questionLineFull = lines.find((line) =>
+      line.trim().startsWith("Вопрос:")
+    );
+    if (questionLineFull) {
+      const afterPrefix = questionLineFull.trim().substring("Вопрос:".length);
+      const parsedQ = parseContent(afterPrefix);
+      questionText = parsedQ.text;
+      questionImg = parsedQ.img;
+    }
+
+    // --- Варианты ---
+    const options = [];
+    const optionsStartIndex = lines.findIndex(
+      (line) => line.trim() === "Варианты:"
+    );
+    if (optionsStartIndex !== -1) {
+      for (let i = optionsStartIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trimEnd(); // не удаляем начальные пробелы — текст может начинаться с них
+        if (line.trim().startsWith("Ответ:")) break;
+
+        // Передаём исходную строку (без trim'а слева, но с trim'ом справа)
+        // Если строка пустая — оставляем пустой текст
+        const rawOptionLine = lines[i].endsWith("\n") ? lines[i] : lines[i]; // просто берём как есть
+        const parsedOpt = parseContent(rawOptionLine);
+        options.push({
+          text: parsedOpt.text,
+          img: parsedOpt.img,
+        });
+      }
+    }
+
+    // --- Правильный ответ ---
+    let correct = -1;
+    const answerLine = lines.find((line) => line.trim().startsWith("Ответ:"));
+    if (answerLine) {
+      correct = parseInt(
+        answerLine.trim().substring("Ответ:".length).trim(),
+        10
+      );
+    }
+
+    return {
+      question: questionText,
+      questionImg: questionImg,
+      options: options,
+      correct: correct,
     };
   });
 }
@@ -157,9 +203,11 @@ io.on("connection", (socket) => {
 
       io.emit("updateQuestion", {
         question: question.question,
-        questionImg: question.questionImg, // <--- Важно добавить передачу картинки вопроса
+        questionImg: question.questionImg,
         options: question.options,
         timeLeft: TIME_LIMIT,
+        questionNumber: currentQuestionIndex + 1, // начинаем с 1
+        totalQuestions: quizData.length,
       });
 
       if (timer) clearInterval(timer);

@@ -48,6 +48,9 @@
           </div>
 
           <div class="card question-card">
+            <div class="question-counter">
+              Вопрос <span id="q-num">1</span> из <span id="q-total">10</span>
+            </div>
             <h2 id="question-text">Загрузка вопроса...</h2>
           </div>
 
@@ -158,9 +161,10 @@
           timerBar.style.transition = `width ${data.timeLeft}s linear`;
           timerBar.style.width = "0%";
         }, 50);
+        document.getElementById("q-num").textContent = data.questionNumber;
+        document.getElementById("q-total").textContent = data.totalQuestions;
       });
 
-      // Завершение времени
       // Завершение времени
       socket.on("timeOver", (data) => {
         const { scores, correctAnswer, currentOptions } = data;

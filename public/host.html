@@ -47,6 +47,9 @@
         </button>
 
         <div class="game-header">
+          <div class="question-counter">
+            Вопрос <span id="q-num">1</span> из <span id="q-total">10</span>
+          </div>
           <div id="timer-display" class="timer-circle">--</div>
           <div class="game-info">
             <h1 id="question-area">Загрузка вопроса...</h1>
@@ -160,6 +163,9 @@
         nextBtn.innerText = "Остановить время"; // Текст во время вопроса
         nextBtn.classList.remove("secondary");
         nextBtn.classList.add("primary");
+
+        document.getElementById("q-num").textContent = data.questionNumber;
+        document.getElementById("q-total").textContent = data.totalQuestions;
       });
 
       socket.on("timerTick", (time) => {
