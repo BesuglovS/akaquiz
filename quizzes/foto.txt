@@ -1,3 +1,6 @@
 Вопрос: Кто изображен на фото? [img:https://img.freepik.com/free-photo/playful-cat-peeking-from-white-surface_60438-3920.jpg?semt=ais_hybrid&w=740]
-Варианты: Кот [img:https://i.pinimg.com/originals/c8/d0/56/c8d056de8e1bb5251de71f3c8a400232.jpg?nii=t], Собака [img:https://www.shutterstock.com/image-photo/beautiful-golden-retriever-cute-puppy-600nw-2526542701.jpg], Попугай [img:https://img.freepik.com/free-photo/beautiful-tropical-colorful-bird_23-2151875472.jpg?semt=ais_hybrid&w=740&q=80]
+Варианты:
+Кот [img:https://i.pinimg.com/originals/c8/d0/56/c8d056de8e1bb5251de71f3c8a400232.jpg?nii=t]
+Собака [img:https://www.shutterstock.com/image-photo/beautiful-golden-retriever-cute-puppy-600nw-2526542701.jpg]
+Попугай [img:https://img.freepik.com/free-photo/beautiful-tropical-colorful-bird_23-2151875472.jpg?semt=ais_hybrid&w=740&q=80]
 Ответ: 0
