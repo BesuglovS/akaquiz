@@ -66,26 +66,40 @@
       const playerListDisplay = document.getElementById("player-list-display");
       const optionsList = document.getElementById("options-list");
       const timerBar = document.getElementById("timer-bar");
+      let myNick = null;
 
       let mySelection = null;
 
-      // Вход в игру
+      function shuffleArray(array) {
+        const arr = [...array]; // создаём копию, чтобы не мутировать оригинал
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
       document.getElementById("join-btn").onclick = () => {
         const nick = document.getElementById("nick-input").value.trim();
         if (nick) {
+          myNick = nick; // <-- сохраняем ник
           socket.emit("join", nick);
           loginDiv.classList.add("hidden");
           gameDiv.classList.remove("hidden");
         }
       };
 
-      // Обновление списка игроков
       socket.on("playerListUpdate", (players) => {
         const status = document.getElementById("lobby-status");
         if (status) status.innerText = `Уже в лобби: ${players.length}`;
 
         playerListDisplay.innerHTML = players
-          .map((name) => `<span class="chip">${name}</span>`)
+          .map((name) => {
+            const isMe = name === myNick;
+            return `<span class="chip ${
+              isMe ? "chip--me" : ""
+            }">${name}</span>`;
+          })
           .join("");
       });
 
@@ -108,21 +122,26 @@
         optionsList.innerHTML = "";
 
         // 2. Отрисовка вариантов
-        data.options.forEach((opt, i) => {
-          const b = document.createElement("button");
-          // Добавляем класс with-img если есть картинка для изменения стилей
-          b.className = "btn option-btn" + (opt.img ? " with-img" : "");
+        const indexedOptions = data.options.map((opt, originalIndex) => ({
+          ...opt,
+          originalIndex,
+        }));
+        const shuffledOptions = shuffleArray(indexedOptions);
 
-          // ВАЖНО: Используем opt.text и opt.img
+        optionsList.innerHTML = "";
+        shuffledOptions.forEach((opt, displayIndex) => {
+          const b = document.createElement("button");
+          b.className = "btn option-btn" + (opt.img ? " with-img" : "");
+          b.dataset.originalIndex = opt.originalIndex; // <-- добавьте эту строку
           b.innerHTML = `
-            ${opt.img ? `<img src="${opt.img}" class="option-img">` : ""}
-            <span class="option-label">${opt.text}</span>
-        `;
+    ${opt.img ? `<img src="${opt.img}" class="option-img">` : ""}
+    <span class="option-label">${opt.text}</span>
+  `;
 
           b.onclick = () => {
             if (mySelection === null) {
-              mySelection = i;
-              socket.emit("submitAnswer", i);
+              mySelection = opt.originalIndex; // <-- отправляем оригинальный индекс!
+              socket.emit("submitAnswer", opt.originalIndex);
               b.classList.add("selected");
               Array.from(optionsList.children).forEach(
                 (btn) => (btn.disabled = true)
@@ -142,63 +161,71 @@
       });
 
       // Завершение времени
+      // Завершение времени
       socket.on("timeOver", (data) => {
-        const { scores, correctAnswer } = data;
+        const { scores, correctAnswer, currentOptions } = data;
         const buttons = optionsList.querySelectorAll("button");
-        const currentQuestionData = data.currentOptions; // Если сервер присылает тексты опций
 
-        // 1. Сразу подсвечиваем кнопки
-        buttons.forEach((btn, i) => {
+        // 1. Подсвечиваем кнопки на основе оригинального индекса
+        buttons.forEach((btn) => {
           btn.disabled = true;
-          if (i === correctAnswer) {
-            btn.classList.add("correct"); // Зеленый для правильного
-            // Добавим иконку галочки для наглядности
+          const origIdx = parseInt(btn.dataset.originalIndex, 10);
+
+          if (origIdx === correctAnswer) {
+            btn.classList.add("correct");
             btn.innerHTML += " ✅";
-          } else if (i === mySelection && i !== correctAnswer) {
-            btn.classList.add("wrong"); // Красный для ошибки игрока
+          } else if (origIdx === mySelection && origIdx !== correctAnswer) {
+            btn.classList.add("wrong");
             btn.innerHTML += " ❌";
           }
         });
 
-        // Находим текст правильного ответа, чтобы показать его текстом
-        // (Предполагаем, что кнопки еще содержат текст вариантов)
-        const correctText = buttons[correctAnswer]
-          ? buttons[correctAnswer].innerText.replace(" ✅", "")
-          : "неизвестно";
+        // 2. Получаем текст правильного ответа из currentOptions (если передан)
+        //    или из кнопки с нужным оригинальным индексом
+        let correctText = "неизвестно";
 
-        // 2. Через 2 секунды показываем результаты раунда и правильный ответ
+        if (currentOptions && currentOptions[correctAnswer]) {
+          correctText = currentOptions[correctAnswer].text;
+        } else {
+          // Резервный способ: найти кнопку с правильным оригинальным индексом
+          const correctBtn = Array.from(buttons).find(
+            (btn) => parseInt(btn.dataset.originalIndex, 10) === correctAnswer
+          );
+          if (correctBtn) {
+            // Извлекаем текст, убирая возможные эмодзи (✅/❌)
+            correctText = correctBtn.textContent.replace(/[✅❌]/g, "").trim();
+          }
+        }
+
+        // 3. Через 2 секунды показываем результат
         setTimeout(() => {
           const isCorrect = mySelection === correctAnswer;
 
           let html = `
-            <div class="result-feedback ${
-              isCorrect ? "text-success" : "text-danger"
-            }">
-                <div class="result-status-icon">${isCorrect ? "🔥" : "⏳"}</div>
-                <h3>${isCorrect ? "Правильно!" : "Упс, не совсем..."}</h3>
-                <p class="correct-answer-reveal">Правильный ответ: <strong>${correctText}</strong></p>
-            </div>
-            
-            <div class="mini-leaderboard">
-                <h4>Текущий рейтинг:</h4>
-                ${Object.entries(scores)
-                  .sort((a, b) => b[1] - a[1])
-                  .slice(0, 5) // Показываем топ-5
-                  .map(
-                    ([name, score], i) => `
-                        <div class="rank-item ${
-                          name === document.getElementById("nick-input").value
-                            ? "is-me"
-                            : ""
-                        }">
-                            <span>${i + 1}. ${name}</span>
-                            <strong>${score}</strong>
-                        </div>
-                    `
-                  )
-                  .join("")}
-            </div>
-        `;
+      <div class="result-feedback ${
+        isCorrect ? "text-success" : "text-danger"
+      }">
+        <div class="result-status-icon">${isCorrect ? "🔥" : "⏳"}</div>
+        <h3>${isCorrect ? "Правильно!" : "Упс, не совсем..."}</h3>
+        <p class="correct-answer-reveal">Правильный ответ: <strong>${correctText}</strong></p>
+      </div>
+      
+      <div class="mini-leaderboard">
+        <h4>Текущий рейтинг:</h4>
+        ${Object.entries(scores)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(
+            ([name, score], i) => `
+              <div class="rank-item ${name === myNick ? "is-me" : ""}">
+                <span>${i + 1}. ${name}</span>
+                <strong>${score}</strong>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
           optionsList.innerHTML = html;
         }, 2000);
       });

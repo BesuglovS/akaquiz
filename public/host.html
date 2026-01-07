@@ -16,6 +16,10 @@
         <h2>⚙️ Настройка квиза</h2>
         <div class="setup-controls">
           <select id="quiz-select" class="custom-select"></select>
+          <label class="checkbox-label">
+            <input type="checkbox" id="shuffle-questions" />
+            Перемешать вопросы
+          </label>
           <button id="load-btn" class="btn secondary">Загрузить вопросы</button>
         </div>
       </header>
@@ -100,7 +104,12 @@
       });
 
       loadBtn.onclick = () => {
-        if (quizSelect.value) socket.emit("selectQuiz", quizSelect.value);
+        const fileName = quizSelect.value;
+        const shouldShuffle =
+          document.getElementById("shuffle-questions").checked;
+        if (fileName) {
+          socket.emit("selectQuiz", { fileName, shuffle: shouldShuffle });
+        }
       };
 
       socket.on("quizReady", (fileName) => {

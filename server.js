@@ -88,13 +88,29 @@ io.on("connection", (socket) => {
     socket.emit("quizList", files);
   });
 
+  function shuffleArray(array) {
+    const shuffled = [...array]; // копируем, чтобы не мутировать оригинал
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
   // Ведущий выбирает квиз
-  socket.on("selectQuiz", (fileName) => {
-    quizData = loadQuizFile(fileName);
+  socket.on("selectQuiz", (data) => {
+    const { fileName, shuffle = false } = data; // деструктуризация с дефолтом
+    let loadedData = loadQuizFile(fileName);
+
+    if (shuffle) {
+      loadedData = shuffleArray(loadedData); // используем функцию из предыдущего ответа
+    }
+
+    quizData = loadedData;
     currentQuestionIndex = -1;
     scores = {};
     io.emit("quizReady", fileName);
-    console.log(`Загружен квиз: ${fileName}`);
+    console.log(`Загружен квиз: ${fileName}, перемешан: ${shuffle}`);
   });
 
   // Вход пользователя (ОБЪЕДИНЕННЫЙ)
@@ -124,6 +140,7 @@ io.on("connection", (socket) => {
       io.emit("timeOver", {
         scores: currentScores,
         correctAnswer: correctIndex,
+        currentOptions: quizData[currentQuestionIndex].options,
       });
 
       return;
@@ -161,6 +178,7 @@ io.on("connection", (socket) => {
           io.emit("timeOver", {
             scores: currentScores,
             correctAnswer: correctIndex,
+            currentOptions: quizData[currentQuestionIndex].options,
           });
         }
       }, 1000);
@@ -211,9 +229,11 @@ io.on("connection", (socket) => {
       const correctIndex = quizData[currentQuestionIndex].correct;
 
       const currentScores = getAllPlayersScores();
+      const q = quizData[currentQuestionIndex];
       io.emit("timeOver", {
         scores: currentScores,
-        correctAnswer: correctIndex,
+        correctAnswer: q.correct,
+        currentOptions: q.options,
       });
     }
   });
