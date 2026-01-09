@@ -92,6 +92,20 @@
         }
       };
 
+      document
+        .getElementById("nick-input")
+        .addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            const nick = event.target.value.trim();
+            if (nick) {
+              myNick = nick;
+              socket.emit("join", nick);
+              loginDiv.classList.add("hidden");
+              gameDiv.classList.remove("hidden");
+            }
+          }
+        });
+
       socket.on("playerListUpdate", (players) => {
         const status = document.getElementById("lobby-status");
         if (status) status.innerText = `Уже в лобби: ${players.length}`;
