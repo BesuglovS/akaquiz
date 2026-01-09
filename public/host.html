@@ -20,6 +20,16 @@
             <input type="checkbox" id="shuffle-questions" />
             Перемешать вопросы
           </label>
+          <label class="checkbox-label">
+            Количество вопросов
+            <input
+              type="number"
+              id="question-count"
+              min="1"
+              placeholder="Все"
+              style="width: 80px; margin-left: 10px"
+            />
+          </label>
           <button id="load-btn" class="btn secondary">Загрузить вопросы</button>
         </div>
       </header>
@@ -108,11 +118,23 @@
 
       loadBtn.onclick = () => {
         const fileName = quizSelect.value;
+        if (!fileName) return;
+
         const shouldShuffle =
           document.getElementById("shuffle-questions").checked;
-        if (fileName) {
-          socket.emit("selectQuiz", { fileName, shuffle: shouldShuffle });
+
+        const countInput = document.getElementById("question-count");
+        let questionCount = null;
+        if (countInput.value.trim() !== "") {
+          const num = parseInt(countInput.value.trim(), 10);
+          if (num > 0) questionCount = num;
         }
+
+        socket.emit("selectQuiz", {
+          fileName,
+          shuffle: shouldShuffle,
+          questionCount,
+        });
       };
 
       socket.on("quizReady", (fileName) => {

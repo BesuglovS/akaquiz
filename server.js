@@ -94,10 +94,12 @@ function loadQuizFile(fileName) {
     let correct = -1;
     const answerLine = lines.find((line) => line.trim().startsWith("Ответ:"));
     if (answerLine) {
-      correct = parseInt(
+      const answerNum = parseInt(
         answerLine.trim().substring("Ответ:".length).trim(),
         10
       );
+      // Преобразуем нумерацию из "с 1" в индекс "с 0"
+      correct = isNaN(answerNum) ? -1 : answerNum - 1;
     }
 
     return {
@@ -145,18 +147,29 @@ io.on("connection", (socket) => {
 
   // Ведущий выбирает квиз
   socket.on("selectQuiz", (data) => {
-    const { fileName, shuffle = false } = data; // деструктуризация с дефолтом
+    const { fileName, shuffle = false, questionCount = null } = data;
     let loadedData = loadQuizFile(fileName);
 
     if (shuffle) {
-      loadedData = shuffleArray(loadedData); // используем функцию из предыдущего ответа
+      loadedData = shuffleArray(loadedData);
+    }
+
+    // Если задано ограничение на количество вопросов — обрезаем массив
+    if (
+      typeof questionCount === "number" &&
+      questionCount > 0 &&
+      questionCount < loadedData.length
+    ) {
+      loadedData = loadedData.slice(0, questionCount);
     }
 
     quizData = loadedData;
     currentQuestionIndex = -1;
     scores = {};
     io.emit("quizReady", fileName);
-    console.log(`Загружен квиз: ${fileName}, перемешан: ${shuffle}`);
+    console.log(
+      `Загружен квиз: ${fileName}, перемешан: ${shuffle}, вопросов: ${quizData.length}`
+    );
   });
 
   // Вход пользователя (ОБЪЕДИНЕННЫЙ)

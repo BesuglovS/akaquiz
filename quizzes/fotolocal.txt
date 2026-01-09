@@ -3,4 +3,4 @@
 Кот [img:q02-01\cat.jpg]
 Собака [img:q02-01\dog.jpg]
 Попугай [img:q02-01\parrot.jpg]
-Ответ: 0
+Ответ: 1
