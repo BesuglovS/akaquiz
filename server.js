@@ -300,7 +300,7 @@ io.on("connection", (socket) => {
   });
 }); // <--- ЗАКРЫВАЕТ io.on("connection")
 
-const PORT = 3000;
+const port = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Сервер: http://localhost:${PORT}`);
 });
