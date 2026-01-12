@@ -1,16 +1,75 @@
 <!DOCTYPE html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>АкаКвиз</title>
-    <link rel="stylesheet" href="style.css" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body class="host-body">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>АкаКвиз — Вход для ведущего</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    .auth-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      padding: 20px;
+      background: #f8f9fa;
+    }
+    .auth-card {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+    }
+    .auth-card h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+    .btn-auth {
+      width: 100%;
+      padding: 12px;
+      background: #6c5ce7;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .btn-auth:hover {
+      background: #5a4bd9;
+    }
+    .error-msg {
+      color: #e74c3c;
+      text-align: center;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body class="host-body">
+  <div id="auth-screen" class="auth-container">
+    <div class="auth-card">
+      <h2>🔐 Вход для ведущего</h2>
+      <input type="password" id="host-password" placeholder="Введите пароль" />
+      <button class="btn-auth" id="submit-password">Войти</button>
+      <div id="auth-error" class="error-msg hidden"></div>
+    </div>
+  </div>
+
+  <!-- ОСНОВНОЙ ИНТЕРФЕЙС (скрыт до успешной авторизации) -->
+  <div id="main-interface" class="host-wrapper hidden">
     <div class="host-wrapper">
       <header id="setup-area" class="card">
         <h2>⚙️ Настройка квиза</h2>
@@ -78,12 +137,54 @@
         <ul id="leaderboard-list"></ul>
       </aside>
     </div>
+  </div>
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-      const socket = io();
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
 
-      // Элементы
+    const authScreen = document.getElementById("auth-screen");
+    const mainInterface = document.getElementById("main-interface");
+    const passwordInput = document.getElementById("host-password");
+    const submitBtn = document.getElementById("submit-password");
+    const errorMsg = document.getElementById("auth-error");
+
+    submitBtn.onclick = () => {
+      const pwd = passwordInput.value.trim();
+      if (!pwd) {
+        showError("Введите пароль");
+        return;
+      }
+      socket.emit("authenticateHost", pwd);
+    };
+
+    passwordInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") submitBtn.click();
+    });
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.classList.remove("hidden");
+    }
+
+    socket.on("hostAuthResult", (result) => {
+      if (result.success) {
+        authScreen.classList.add("hidden");
+        mainInterface.classList.remove("hidden");
+        // После входа — запросить список квизов
+        socket.emit("getQuizList");
+      } else {
+        if (result.reason === "already_host") {
+          showError("Ведущий уже подключён!");
+        } else {
+          showError("Неверный пароль. Попробуйте снова.");
+          passwordInput.value = "";
+          passwordInput.focus();
+        }
+      }
+    });
+    
+    // Элементы
       const setupArea = document.getElementById("setup-area");
       const lobby = document.getElementById("lobby");
       const gameArea = document.getElementById("game-area");
@@ -97,9 +198,6 @@
       const statsCont = document.getElementById("stats-container");
       const playerNamesDiv = document.getElementById("player-names");
       const playerCountSpan = document.getElementById("player-count-badge");
-
-      // Инициализация
-      socket.emit("getQuizList");
 
       socket.on("quizList", (files) => {
         quizSelect.innerHTML = files
@@ -290,6 +388,11 @@
         socket.emit("resetGame");
         location.reload(); // Простой способ вернуть хоста в начало
       };
-    </script>
-  </body>
+    
+  </script>
+
+  <!-- Вставьте сюда ваш оригинальный JS-код из host.html (всё, что было внутри <script> после подключения socket.io) -->
+  <!-- Но уберите из него первую строку socket.emit("getQuizList"); — она теперь вызывается после авторизации -->
+   
+</body>
 </html>

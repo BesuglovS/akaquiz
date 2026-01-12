@@ -19,6 +19,8 @@ let answeredUsers = new Set();
 let timer = null;
 let questionStartTime = 0;
 let isQuestionActive = false;
+const HOST_PASSWORD = "rty6tedde"; // ← Замените на свой!
+let hostSocketId = null; // ID сокета текущего ведущего
 
 const MAX_SCORE = 100;
 const MIN_SCORE = 20;
@@ -126,8 +128,33 @@ function getAllPlayersScores() {
 }
 
 io.on("connection", (socket) => {
+  // Аутентификация хоста
+  socket.on("authenticateHost", (password) => {
+    if (hostSocketId !== null) {
+      socket.emit("hostAuthResult", { success: false, reason: "already_host" });
+      return;
+    }
+
+    if (password === HOST_PASSWORD) {
+      hostSocketId = socket.id;
+      socket.isHost = true;
+      socket.emit("hostAuthResult", { success: true });
+      console.log("Хост успешно авторизован");
+    } else {
+      socket.emit("hostAuthResult", { success: false, reason: "wrong_password" });
+    }
+  });
+
+  socket.on("disconnect", () => {
+    if (socket.id === hostSocketId) {
+      hostSocketId = null;
+      console.log("Хост отключился");
+    }
+  });
+
   // Отправляем список файлов ведущему
   socket.on("getQuizList", () => {
+    if (!socket.isHost) return;
     const dirPath = path.join(__dirname, "quizzes");
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath);
@@ -147,6 +174,7 @@ io.on("connection", (socket) => {
 
   // Ведущий выбирает квиз
   socket.on("selectQuiz", (data) => {
+    if (!socket.isHost) return;
     const { fileName, shuffle = false, questionCount = null } = data;
     let loadedData = loadQuizFile(fileName);
 
@@ -190,6 +218,7 @@ io.on("connection", (socket) => {
 
   // Управление ведущего: Следующий вопрос
   socket.on("nextQuestion", () => {
+    if (!socket.isHost) return;
     if (isQuestionActive) {
       if (timer) clearInterval(timer);
       isQuestionActive = false;
@@ -251,6 +280,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("resetGame", () => {
+    if (!socket.isHost) return;
     currentQuestionIndex = -1;
     scores = {};
     quizData = [];
