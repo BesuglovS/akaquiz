@@ -62,7 +62,7 @@ function loadQuizFile(fileName) {
     let questionText = "";
 
     const questionLineFull = lines.find((line) =>
-      line.trim().startsWith("Вопрос:")
+      line.trim().startsWith("Вопрос:"),
     );
     if (questionLineFull) {
       const afterPrefix = questionLineFull.trim().substring("Вопрос:".length);
@@ -74,7 +74,7 @@ function loadQuizFile(fileName) {
     // --- Варианты ---
     const options = [];
     const optionsStartIndex = lines.findIndex(
-      (line) => line.trim() === "Варианты:"
+      (line) => line.trim() === "Варианты:",
     );
     if (optionsStartIndex !== -1) {
       for (let i = optionsStartIndex + 1; i < lines.length; i++) {
@@ -98,7 +98,7 @@ function loadQuizFile(fileName) {
     if (answerLine) {
       const answerNum = parseInt(
         answerLine.trim().substring("Ответ:".length).trim(),
-        10
+        10,
       );
       // Преобразуем нумерацию из "с 1" в индекс "с 0"
       correct = isNaN(answerNum) ? -1 : answerNum - 1;
@@ -141,7 +141,10 @@ io.on("connection", (socket) => {
       socket.emit("hostAuthResult", { success: true });
       console.log("Хост успешно авторизован");
     } else {
-      socket.emit("hostAuthResult", { success: false, reason: "wrong_password" });
+      socket.emit("hostAuthResult", {
+        success: false,
+        reason: "wrong_password",
+      });
     }
   });
 
@@ -196,22 +199,50 @@ io.on("connection", (socket) => {
     scores = {};
     io.emit("quizReady", fileName);
     console.log(
-      `Загружен квиз: ${fileName}, перемешан: ${shuffle}, вопросов: ${quizData.length}`
+      `Загружен квиз: ${fileName}, перемешан: ${shuffle}, вопросов: ${quizData.length}`,
     );
   });
 
   // Вход пользователя (ОБЪЕДИНЕННЫЙ)
+  // Внутри io.on("connection", (socket) => { ... })
+
   socket.on("join", (nickname) => {
+    // Проверяем, что ник не пустой
+    if (!nickname || typeof nickname !== "string" || nickname.trim() === "") {
+      socket.emit("joinError", "Никнейм не может быть пустым");
+      return;
+    }
+
+    nickname = nickname.trim();
+
+    // Проверяем, не занят ли никнейм другим активным игроком
+    const isNicknameTaken = Array.from(io.sockets.sockets.values()).some(
+      (s) => s.nickname === nickname && s.id !== socket.id,
+    );
+
+    if (isNicknameTaken) {
+      socket.emit("joinError", "Этот никнейм уже занят. Выберите другой.");
+      return;
+    }
+
+    // Устанавливаем никнейм
     socket.nickname = nickname;
-    if (!scores[nickname]) scores[nickname] = 0;
+
+    // Инициализируем счёт, если ещё не существует
+    if (scores[nickname] === undefined) {
+      scores[nickname] = 0;
+    } else {
+      // Если счёт уже есть (например, после переподключения), оставляем его
+      // Но это допустимо ТОЛЬКО если предыдущий сокет с таким ником отключился
+      // В нашем случае выше мы запрещаем дубли, так что это безопасно
+    }
 
     console.log(`${nickname} присоединился`);
 
-    const players = [];
-    const sockets = io.sockets.sockets;
-    sockets.forEach((s) => {
-      if (s.nickname) players.push(s.nickname);
-    });
+    // Обновляем список игроков
+    const players = Array.from(io.sockets.sockets.values())
+      .filter((s) => s.nickname)
+      .map((s) => s.nickname);
 
     io.emit("playerListUpdate", players);
   });
@@ -299,7 +330,7 @@ io.on("connection", (socket) => {
 
     if (index === currentQ.correct && socket.nickname) {
       let scoreEarned = Math.round(
-        MAX_SCORE - (timeElapsed * (MAX_SCORE - MIN_SCORE)) / TIME_LIMIT
+        MAX_SCORE - (timeElapsed * (MAX_SCORE - MIN_SCORE)) / TIME_LIMIT,
       );
       scoreEarned = Math.max(MIN_SCORE, Math.min(MAX_SCORE, scoreEarned));
       scores[socket.nickname] = (scores[socket.nickname] || 0) + scoreEarned;
@@ -311,7 +342,7 @@ io.on("connection", (socket) => {
     io.emit("updateStats", votes);
 
     const totalPlayers = Array.from(io.sockets.sockets.values()).filter(
-      (s) => s.nickname
+      (s) => s.nickname,
     ).length;
 
     if (answeredUsers.size >= totalPlayers && totalPlayers > 0) {
@@ -330,7 +361,7 @@ io.on("connection", (socket) => {
   });
 }); // <--- ЗАКРЫВАЕТ io.on("connection")
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 80;
 server.listen(port, "0.0.0.0", () => {
   console.log(`Сервер: http://localhost:${port}`);
 });

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
@@ -106,6 +106,14 @@
           }
         });
 
+      socket.on("joinError", (message) => {
+        alert("Ошибка: " + message);
+        // Возвращаем пользователя на экран ввода ника
+        loginDiv.classList.remove("hidden");
+        gameDiv.classList.add("hidden");
+        myNick = null;
+      });
+
       socket.on("playerListUpdate", (players) => {
         const status = document.getElementById("lobby-status");
         if (status) status.innerText = `Уже в лобби: ${players.length}`;
@@ -161,7 +169,7 @@
               socket.emit("submitAnswer", opt.originalIndex);
               b.classList.add("selected");
               Array.from(optionsList.children).forEach(
-                (btn) => (btn.disabled = true)
+                (btn) => (btn.disabled = true),
               );
             }
           };
@@ -207,7 +215,7 @@
         } else {
           // Резервный способ: найти кнопку с правильным оригинальным индексом
           const correctBtn = Array.from(buttons).find(
-            (btn) => parseInt(btn.dataset.originalIndex, 10) === correctAnswer
+            (btn) => parseInt(btn.dataset.originalIndex, 10) === correctAnswer,
           );
           if (correctBtn) {
             // Извлекаем текст, убирая возможные эмодзи (✅/❌)
@@ -239,7 +247,7 @@
                 <span>${i + 1}. ${name}</span>
                 <strong>${score}</strong>
               </div>
-            `
+            `,
           )
           .join("")}
       </div>
