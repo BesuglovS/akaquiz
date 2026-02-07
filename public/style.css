@@ -60,7 +60,9 @@ h3 {
   border-radius: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 
 .btn.primary {
@@ -263,6 +265,38 @@ h3 {
   color: var(--text);
 }
 
+/* Подсказки в лобби */
+.lobby-tips {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+}
+
+.lobby-tips h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #495057;
+  font-size: 1rem;
+}
+
+.lobby-tips ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+.lobby-tips li {
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+
+.lobby-tips li:last-child {
+  margin-bottom: 0;
+}
+
 /* Игра */
 .timer-container {
   width: 100%;
@@ -300,7 +334,7 @@ h3 {
 }
 
 .option-btn.selected {
-  background: #fab1a0;
+  background: #e6ccb2;
   transform: scale(0.98);
 }
 
@@ -351,6 +385,145 @@ h3 {
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+/* --- СТИЛИ ДЛЯ АНАЛИТИКИ ОТВЕТОВ --- */
+.analytics-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.analytics-controls .btn {
+  flex: 1;
+  min-width: 150px;
+}
+
+.analytics-controls .btn.active {
+  background-color: #6c5ce7;
+  color: white;
+  box-shadow: 0 4px 15px rgba(108, 92, 231, 0.3);
+}
+
+.analytics-content {
+  margin-top: 20px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.analytics-card {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+}
+
+.analytics-card h4 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #495057;
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.metric:last-child {
+  border-bottom: none;
+}
+
+.metric-label {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.metric-value {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #495057;
+}
+
+.metric-value.correct {
+  color: #28a745;
+}
+
+.question-text-preview {
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  border: 1px solid #dee2e6;
+  font-style: italic;
+  color: #495057;
+}
+
+.time-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.time-bin {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.bin-label {
+  width: 60px;
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.bin-bar {
+  flex-grow: 1;
+  height: 20px;
+  background: #e9ecef;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.bin-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6c5ce7, #a29bfe);
+  transition: width 0.3s ease;
+}
+
+.bin-count {
+  font-size: 0.85rem;
+  color: #6c757d;
+  min-width: 120px;
+  text-align: right;
+}
+
+/* Адаптивность для аналитики */
+@media (max-width: 768px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .time-bin {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .bin-label {
+    width: auto;
+  }
+
+  .bin-count {
+    text-align: left;
   }
 }
 

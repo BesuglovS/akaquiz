@@ -22,6 +22,15 @@ let isQuestionActive = false;
 const HOST_PASSWORD = "rty6tedde"; // ← Замените на свой!
 let hostSocketId = null; // ID сокета текущего ведущего
 
+// --- АНАЛИТИКА ВРЕМЕНИ ОТВЕТОВ ---
+let answerAnalytics = {
+  totalAnswers: 0,
+  correctAnswers: 0,
+  averageResponseTime: 0,
+  responseTimeDistribution: [], // массив времени ответов в секундах
+  questionStats: [], // статистика по каждому вопросу
+};
+
 const MAX_SCORE = 100;
 const MIN_SCORE = 20;
 const TIME_LIMIT = 15;
@@ -315,8 +324,143 @@ io.on("connection", (socket) => {
     currentQuestionIndex = -1;
     scores = {};
     quizData = [];
+    // Сброс аналитики при сбросе игры
+    answerAnalytics = {
+      totalAnswers: 0,
+      correctAnswers: 0,
+      averageResponseTime: 0,
+      responseTimeDistribution: [],
+      questionStats: [],
+    };
     io.emit("gameReset");
   });
+
+  // --- НОВЫЕ СОБЫТИЯ ДЛЯ АНАЛИТИКИ ---
+  socket.on("getAnalytics", () => {
+    if (!socket.isHost) return;
+    socket.emit("analyticsData", answerAnalytics);
+  });
+
+  socket.on("getQuestionAnalytics", (questionIndex) => {
+    if (!socket.isHost) return;
+
+    // Если передан -1, показываем аналитику по последнему вопросу
+    if (questionIndex === -1) {
+      const lastQuestionIndex = answerAnalytics.questionStats.length - 1;
+      if (lastQuestionIndex >= 0) {
+        socket.emit(
+          "questionAnalyticsData",
+          answerAnalytics.questionStats[lastQuestionIndex],
+        );
+      } else {
+        socket.emit("questionAnalyticsData", {
+          question: "Нет данных",
+          totalAnswers: 0,
+          correctAnswers: 0,
+          averageResponseTime: 0,
+          responseTimes: [],
+        });
+      }
+    } else {
+      // Показываем аналитику по конкретному вопросу
+      if (answerAnalytics.questionStats[questionIndex]) {
+        socket.emit(
+          "questionAnalyticsData",
+          answerAnalytics.questionStats[questionIndex],
+        );
+      }
+    }
+  });
+
+  // --- ЭКСПОРТ РЕЗУЛЬТАТОВ В CSV ---
+  socket.on("exportResults", () => {
+    if (!socket.isHost) return;
+
+    const csvContent = generateCSVResults();
+    socket.emit("csvExportReady", csvContent);
+  });
+
+  function generateCSVResults() {
+    const headers = [
+      "Никнейм",
+      "Очки",
+      "Всего ответов",
+      "Правильных ответов",
+      "Процент правильных",
+      "Среднее время ответа (сек)",
+    ];
+
+    // Получаем список всех игроков
+    const allScores = getAllPlayersScores();
+    const players = Object.keys(allScores);
+
+    // Формируем строки для CSV
+    const rows = players.map((nickname) => {
+      const totalAnswers = answerAnalytics.responseTimeDistribution.length;
+      const correctAnswers = answerAnalytics.correctAnswers;
+      const accuracy =
+        totalAnswers > 0
+          ? ((correctAnswers / totalAnswers) * 100).toFixed(2)
+          : "0.00";
+      const avgResponseTime = answerAnalytics.averageResponseTime.toFixed(2);
+
+      return [
+        `"${nickname}"`,
+        allScores[nickname],
+        totalAnswers,
+        correctAnswers,
+        `${accuracy}%`,
+        avgResponseTime,
+      ].join(",");
+    });
+
+    // Добавляем строки по вопросам
+    const questionHeaders = [
+      "Вопрос",
+      "Ответов",
+      "Правильных",
+      "Процент",
+      "Среднее время (сек)",
+    ];
+    const questionRows = answerAnalytics.questionStats.map(
+      (question, index) => {
+        const accuracy =
+          question.totalAnswers > 0
+            ? ((question.correctAnswers / question.totalAnswers) * 100).toFixed(
+                2,
+              )
+            : "0.00";
+        const avgTime = question.averageResponseTime.toFixed(2);
+
+        return [
+          `"${question.question.replace(/"/g, '""')}"`,
+          question.totalAnswers,
+          question.correctAnswers,
+          `${accuracy}%`,
+          avgTime,
+        ].join(",");
+      },
+    );
+
+    // Формируем итоговый CSV
+    const csv = [
+      "=== ОБЩАЯ СТАТИСТИКА ===",
+      headers.join(","),
+      ...rows,
+      "",
+      "=== СТАТИСТИКА ПО ВОПРОСАМ ===",
+      questionHeaders.join(","),
+      ...questionRows,
+      "",
+      "=== ДЕТАЛИ ПО ВРЕМЕНИ ОТВЕТОВ ===",
+      "Время ответа (сек)",
+      ...answerAnalytics.responseTimeDistribution.map((time) =>
+        time.toFixed(2),
+      ),
+    ].join("\n");
+
+    return csv;
+  }
 
   socket.on("submitAnswer", (index) => {
     const now = Date.now();
@@ -327,6 +471,44 @@ io.on("connection", (socket) => {
 
     const currentQ = quizData[currentQuestionIndex];
     if (!currentQ) return;
+
+    // --- СБОР АНАЛИТИКИ ОТВЕТОВ ---
+    answerAnalytics.totalAnswers++;
+    answerAnalytics.responseTimeDistribution.push(timeElapsed);
+
+    const isCorrect = index === currentQ.correct;
+    if (isCorrect) {
+      answerAnalytics.correctAnswers++;
+    }
+
+    // Статистика по текущему вопросу
+    if (!answerAnalytics.questionStats[currentQuestionIndex]) {
+      answerAnalytics.questionStats[currentQuestionIndex] = {
+        question: currentQ.question,
+        correctAnswers: 0,
+        totalAnswers: 0,
+        averageResponseTime: 0,
+        responseTimes: [],
+      };
+    }
+
+    const questionStat = answerAnalytics.questionStats[currentQuestionIndex];
+    questionStat.totalAnswers++;
+    questionStat.responseTimes.push(timeElapsed);
+
+    if (isCorrect) {
+      questionStat.correctAnswers++;
+    }
+
+    // Обновляем среднее время ответа для вопроса
+    questionStat.averageResponseTime =
+      questionStat.responseTimes.reduce((a, b) => a + b, 0) /
+      questionStat.responseTimes.length;
+
+    // Обновляем общее среднее время ответа
+    answerAnalytics.averageResponseTime =
+      answerAnalytics.responseTimeDistribution.reduce((a, b) => a + b, 0) /
+      answerAnalytics.responseTimeDistribution.length;
 
     if (index === currentQ.correct && socket.nickname) {
       let scoreEarned = Math.round(
