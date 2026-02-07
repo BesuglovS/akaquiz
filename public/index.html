@@ -236,11 +236,10 @@
         <p class="correct-answer-reveal">Правильный ответ: <strong>${correctText}</strong></p>
       </div>
       
-      <div class="mini-leaderboard">
+        <div class="mini-leaderboard">
         <h4>Текущий рейтинг:</h4>
         ${Object.entries(scores)
           .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
           .map(
             ([name, score], i) => `
               <div class="rank-item ${name === myNick ? "is-me" : ""}">
