@@ -10,6 +10,27 @@
       rel="stylesheet"
     />
     <style>
+      .theme-toggle {
+        position: fixed;
+        top: 15px;
+        right: 15px;
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        border-radius: 50%;
+        width: 44px;
+        height: 44px;
+        cursor: pointer;
+        font-size: 1.3rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
+        z-index: 1000;
+      }
+      .theme-toggle:hover {
+        background: rgba(255, 255, 255, 0.4);
+        transform: scale(1.1);
+      }
       .auth-container {
         display: flex;
         flex-direction: column;
@@ -201,6 +222,9 @@
     </style>
   </head>
   <body class="host-body">
+    <button class="theme-toggle" id="themeToggle" title="Сменить тему">
+      🌙
+    </button>
     <div id="auth-screen" class="auth-container">
       <div class="auth-card">
         <h2>🔐 Вход для ведущего</h2>
@@ -774,6 +798,27 @@
                 .join("")}
             </div>
           `;
+      }
+
+      // Тёмная тема
+      const themeToggle = document.getElementById("themeToggle");
+      const html = document.documentElement;
+
+      // Загружаем сохранённую тему
+      const savedTheme = localStorage.getItem("theme") || "light";
+      html.setAttribute("data-theme", savedTheme);
+      updateThemeIcon(savedTheme);
+
+      themeToggle.addEventListener("click", () => {
+        const currentTheme = html.getAttribute("data-theme");
+        const newTheme = currentTheme === "dark" ? "light" : "dark";
+        html.setAttribute("data-theme", newTheme);
+        localStorage.setItem("theme", newTheme);
+        updateThemeIcon(newTheme);
+      });
+
+      function updateThemeIcon(theme) {
+        themeToggle.innerHTML = theme === "dark" ? "☀️" : "🌙";
       }
     </script>
   </body>

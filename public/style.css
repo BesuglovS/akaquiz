@@ -2,9 +2,180 @@
   --primary: #6c5ce7;
   --secondary: #a29bfe;
   --bg: #f0f2f5;
+  --bg-card: #ffffff;
   --text: #2d3436;
+  --text-secondary: #636e72;
   --white: #ffffff;
   --success: #00b894;
+  --border: #dfe6e9;
+  --shadow: rgba(0, 0, 0, 0.1);
+}
+
+/* Тёмная тема */
+[data-theme="dark"] {
+  --bg: #1a1a2e;
+  --bg-card: #232946;
+  --text: #e8e8e8;
+  --text-secondary: #b8b8b8;
+  --white: #2d3a5a;
+  --border: #3d4a6a;
+  --shadow: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] body,
+[data-theme="dark"] .card {
+  background-color: var(--bg-card);
+  color: var(--text);
+}
+
+[data-theme="dark"] .auth-container {
+  background: var(--bg);
+}
+
+[data-theme="dark"] .auth-card {
+  background: var(--bg-card);
+}
+
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4 {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .bar-wrapper {
+  background: #3d4a6a;
+}
+
+[data-theme="dark"] .bar-fill {
+  background: #a29bfe;
+}
+
+[data-theme="dark"] .custom-select,
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="number"] {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .btn.secondary {
+  background: #3d4a6a;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-auth {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .player-chip {
+  background: #4a4a6a;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .stats-visualizer {
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .analytics-card {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .analytics-card h4 {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .timer-container {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .option-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .timer-circle {
+  border-color: var(--secondary);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .chip,
+[data-theme="dark"] .lobby-tips {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .mini-leaderboard {
+  background: var(--bg);
+  color: var(--text);
+}
+
+[data-theme="dark"] .score {
+  background: #3d4a6a;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .metric-label {
+  color: #b8b8b8;
+}
+
+[data-theme="dark"] .metric-value {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .time-bin,
+[data-theme="dark"] .bin-label,
+[data-theme="dark"] .bin-count {
+  color: var(--text);
+}
+
+[data-theme="dark"] .bin-bar {
+  background: #3d4a6a;
+}
+
+[data-theme="dark"] .empty-msg {
+  color: #888888;
+}
+
+[data-theme="dark"] #leaderboard-list li {
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .checkbox-label {
+  color: var(--text);
+}
+
+[data-theme="dark"] .badge {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .player-grid {
+  color: var(--text);
+}
+
+[data-theme="dark"] .error-msg {
+  color: #ff6b6b;
+}
+
+[data-theme="dark"] .auth-card h2 {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .result-feedback {
+  background: rgba(45, 58, 90, 0.95);
+  color: var(--text);
+}
+
+[data-theme="dark"] .correct-answer-reveal {
+  color: var(--text);
+  border-top-color: var(--border);
 }
 
 * {
@@ -215,6 +386,12 @@ h3 {
   align-items: center;
   justify-content: center;
   padding: 15px;
+  transition: background 0.3s;
+}
+
+/* Тёмная тема для игрока */
+[data-theme="dark"] .player-body {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
 }
 
 .player-container {
