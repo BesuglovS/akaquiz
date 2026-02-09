@@ -6,12 +6,21 @@ const {
   validateResponseTime,
 } = require("../middleware/validation");
 const gameService = require("../services/gameService");
+const {
+  handleSocketError,
+  validateOrThrow,
+  asyncErrorHandler,
+  initGlobalErrorHandlers,
+} = require("../middleware/errorHandler");
 
 /**
  * Обработчики Socket.IO событий
  * @param {Socket} io - экземпляр Socket.IO
  */
 function setupSocketRoutes(io) {
+  // Инициализация глобальных обработчиков ошибок
+  initGlobalErrorHandlers();
+
   // Хранилище активных сокетов для проверки уникальности ников
   const activeSockets = new Map();
 
@@ -20,39 +29,38 @@ function setupSocketRoutes(io) {
 
     // Аутентификация хоста
     socket.on("authenticateHost", (password) => {
-      const validation = validateHostPassword(password);
-      if (!validation.isValid) {
-        socket.emit("hostAuthResult", {
-          success: false,
-          reason: "invalid_password",
-          error: validation.error,
-        });
-        return;
-      }
+      try {
+        const validation = validateHostPassword(password);
+        if (!validateOrThrow(validation, socket, "host authentication")) {
+          return;
+        }
 
-      // Проверяем, не занят ли уже хост
-      const existingHost = Array.from(activeSockets.values()).find(
-        (s) => s.isHost,
-      );
-      if (existingHost) {
-        socket.emit("hostAuthResult", {
-          success: false,
-          reason: "already_host",
-        });
-        return;
-      }
+        // Проверяем, не занят ли уже хост
+        const existingHost = Array.from(activeSockets.values()).find(
+          (s) => s.isHost,
+        );
+        if (existingHost) {
+          socket.emit("hostAuthResult", {
+            success: false,
+            reason: "already_host",
+          });
+          return;
+        }
 
-      const HOST_PASSWORD = process.env.HOST_PASSWORD || "rty6tedde";
-      if (password === HOST_PASSWORD) {
-        socket.isHost = true;
-        activeSockets.set(socket.id, socket);
-        socket.emit("hostAuthResult", { success: true });
-        console.log("Хост успешно авторизован:", socket.id);
-      } else {
-        socket.emit("hostAuthResult", {
-          success: false,
-          reason: "wrong_password",
-        });
+        const HOST_PASSWORD = process.env.HOST_PASSWORD || "rty6tedde";
+        if (password === HOST_PASSWORD) {
+          socket.isHost = true;
+          activeSockets.set(socket.id, socket);
+          socket.emit("hostAuthResult", { success: true });
+          console.log("Хост успешно авторизован:", socket.id);
+        } else {
+          socket.emit("hostAuthResult", {
+            success: false,
+            reason: "wrong_password",
+          });
+        }
+      } catch (error) {
+        handleSocketError(socket, error, "authenticateHost");
       }
     });
 
@@ -85,64 +93,70 @@ function setupSocketRoutes(io) {
     socket.on("selectQuiz", (data) => {
       if (!socket.isHost) return;
 
-      const validation = validateQuizSelection(data);
-      if (!validation.isValid) {
-        socket.emit("quizError", { message: validation.error });
-        return;
-      }
+      try {
+        const validation = validateQuizSelection(data);
+        if (!validateOrThrow(validation, socket, "quiz selection")) {
+          return;
+        }
 
-      const result = gameService.loadQuiz(
-        data.fileName,
-        data.shuffle,
-        data.questionCount,
-      );
+        const result = gameService.loadQuiz(
+          data.fileName,
+          data.shuffle,
+          data.questionCount,
+        );
 
-      if (result.success) {
-        io.emit("quizReady", data.fileName);
-        console.log(result.message);
-      } else {
-        socket.emit("quizError", { message: result.error });
+        if (result.success) {
+          io.emit("quizReady", data.fileName);
+          console.log(result.message);
+        } else {
+          socket.emit("quizError", { message: result.error });
+        }
+      } catch (error) {
+        handleSocketError(socket, error, "selectQuiz");
       }
     });
 
     // Вход пользователя
     socket.on("join", (nickname) => {
-      const validation = validateNickname(nickname);
-      if (!validation.isValid) {
-        socket.emit("joinError", validation.error);
-        return;
+      try {
+        const validation = validateNickname(nickname);
+        if (!validateOrThrow(validation, socket, "nickname validation")) {
+          return;
+        }
+
+        const trimmedNickname = validation.value;
+
+        // Проверяем, не занят ли никнейм другим активным игроком
+        const isNicknameTaken = Array.from(activeSockets.values()).some(
+          (s) => s.nickname === trimmedNickname && s.id !== socket.id,
+        );
+
+        if (isNicknameTaken) {
+          socket.emit("joinError", "Этот никнейм уже занят. Выберите другой.");
+          return;
+        }
+
+        // Устанавливаем никнейм
+        socket.nickname = trimmedNickname;
+        activeSockets.set(socket.id, socket);
+
+        // Инициализируем счёт, если ещё не существует
+        const currentScores = gameService.getAllPlayersScores();
+        if (currentScores[trimmedNickname] === undefined) {
+          // Счёт будет инициализирован при первом ответе
+        }
+
+        console.log(`${trimmedNickname} присоединился`);
+
+        // Обновляем список игроков
+        const players = Array.from(activeSockets.values())
+          .filter((s) => s.nickname)
+          .map((s) => s.nickname);
+
+        io.emit("playerListUpdate", players);
+      } catch (error) {
+        handleSocketError(socket, error, "join");
       }
-
-      const trimmedNickname = validation.value;
-
-      // Проверяем, не занят ли никнейм другим активным игроком
-      const isNicknameTaken = Array.from(activeSockets.values()).some(
-        (s) => s.nickname === trimmedNickname && s.id !== socket.id,
-      );
-
-      if (isNicknameTaken) {
-        socket.emit("joinError", "Этот никнейм уже занят. Выберите другой.");
-        return;
-      }
-
-      // Устанавливаем никнейм
-      socket.nickname = trimmedNickname;
-      activeSockets.set(socket.id, socket);
-
-      // Инициализируем счёт, если ещё не существует
-      const currentScores = gameService.getAllPlayersScores();
-      if (currentScores[trimmedNickname] === undefined) {
-        // Счёт будет инициализирован при первом ответе
-      }
-
-      console.log(`${trimmedNickname} присоединился`);
-
-      // Обновляем список игроков
-      const players = Array.from(activeSockets.values())
-        .filter((s) => s.nickname)
-        .map((s) => s.nickname);
-
-      io.emit("playerListUpdate", players);
     });
 
     // Управление ведущего: Следующий вопрос
@@ -224,68 +238,72 @@ function setupSocketRoutes(io) {
     });
 
     socket.on("submitAnswer", (index) => {
-      const now = Date.now();
-      const timeElapsed = (now - gameService.questionStartTime) / 1000;
+      try {
+        const now = Date.now();
+        const timeElapsed = (now - gameService.questionStartTime) / 1000;
 
-      // Проверяем, активен ли вопрос
-      if (!gameService.isCurrentQuestionActive()) {
-        return;
-      }
+        // Проверяем, активен ли вопрос
+        if (!gameService.isCurrentQuestionActive()) {
+          return;
+        }
 
-      if (timeElapsed > 15 + 0.5) return; // TIME_LIMIT + погрешность
+        if (timeElapsed > 15 + 0.5) return; // TIME_LIMIT + погрешность
 
-      if (socket.answered) return;
+        if (socket.answered) return;
 
-      const currentQuestionIndex = gameService.getCurrentQuestionIndex();
-      const totalQuestions = gameService.getTotalQuestions();
-      const currentQ = gameService.quizData[currentQuestionIndex];
+        const currentQuestionIndex = gameService.getCurrentQuestionIndex();
+        const totalQuestions = gameService.getTotalQuestions();
+        const currentQ = gameService.quizData[currentQuestionIndex];
 
-      if (!currentQ) return;
+        if (!currentQ) return;
 
-      // Валидация индекса ответа
-      const validation = validateAnswerIndex(index, currentQ.options.length);
-      if (!validation.isValid) {
-        return;
-      }
+        // Валидация индекса ответа
+        const validation = validateAnswerIndex(index, currentQ.options.length);
+        if (!validation.isValid) {
+          return;
+        }
 
-      // Валидация времени ответа
-      const timeValidation = validateResponseTime(timeElapsed);
-      if (!timeValidation.isValid) {
-        return;
-      }
+        // Валидация времени ответа
+        const timeValidation = validateResponseTime(timeElapsed);
+        if (!timeValidation.isValid) {
+          return;
+        }
 
-      // Обработка ответа
-      const result = gameService.processAnswer(
-        socket.nickname,
-        index,
-        timeElapsed,
-      );
+        // Обработка ответа
+        const result = gameService.processAnswer(
+          socket.nickname,
+          index,
+          timeElapsed,
+        );
 
-      if (result.success) {
-        socket.answered = true;
+        if (result.success) {
+          socket.answered = true;
 
-        // Обновляем статистику
-        io.emit("updateStats", gameService.votes);
+          // Обновляем статистику
+          io.emit("updateStats", gameService.votes);
 
-        // Проверяем, все ли ответили
-        const totalPlayers = Array.from(activeSockets.values()).filter(
-          (s) => s.nickname,
-        ).length;
+          // Проверяем, все ли ответили
+          const totalPlayers = Array.from(activeSockets.values()).filter(
+            (s) => s.nickname,
+          ).length;
 
-        if (
-          gameService.answeredUsers.size >= totalPlayers &&
-          totalPlayers > 0
-        ) {
-          const endResult = gameService.endCurrentQuestion();
-          if (endResult) {
-            const currentScores = gameService.getAllPlayersScores();
-            io.emit("timeOver", {
-              scores: currentScores,
-              correctAnswer: endResult.correctAnswer,
-              currentOptions: endResult.currentOptions,
-            });
+          if (
+            gameService.answeredUsers.size >= totalPlayers &&
+            totalPlayers > 0
+          ) {
+            const endResult = gameService.endCurrentQuestion();
+            if (endResult) {
+              const currentScores = gameService.getAllPlayersScores();
+              io.emit("timeOver", {
+                scores: currentScores,
+                correctAnswer: endResult.correctAnswer,
+                currentOptions: endResult.currentOptions,
+              });
+            }
           }
         }
+      } catch (error) {
+        handleSocketError(socket, error, "submitAnswer");
       }
     });
   });
