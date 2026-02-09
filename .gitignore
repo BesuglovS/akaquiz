@@ -1,4 +1,11 @@
 node_modules/
 .env
 .DS_Store
+*.log
+coverage/
 dist/
+build/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

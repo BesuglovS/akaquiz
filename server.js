@@ -3,6 +3,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 const fs = require("fs");
+require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
@@ -19,7 +20,7 @@ let answeredUsers = new Set();
 let timer = null;
 let questionStartTime = 0;
 let isQuestionActive = false;
-const HOST_PASSWORD = "rty6tedde"; // ← Замените на свой!
+const HOST_PASSWORD = process.env.HOST_PASSWORD || "rty6tedde"; // Пароль из .env или значение по умолчанию
 let hostSocketId = null; // ID сокета текущего ведущего
 
 // --- АНАЛИТИКА ВРЕМЕНИ ОТВЕТОВ ---
