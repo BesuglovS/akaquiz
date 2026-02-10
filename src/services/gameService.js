@@ -232,12 +232,13 @@ class GameService {
       this.answerAnalytics.responseTimeDistribution.length;
 
     // Начисление очков
+    let scoreEarned = 0;
     if (isCorrect && nickname) {
       const MAX_SCORE = 100;
       const MIN_SCORE = 20;
       const TIME_LIMIT = config.game.timeLimit;
 
-      let scoreEarned = Math.round(
+      scoreEarned = Math.round(
         MAX_SCORE - (timeElapsed * (MAX_SCORE - MIN_SCORE)) / TIME_LIMIT,
       );
       scoreEarned = Math.max(MIN_SCORE, Math.min(MAX_SCORE, scoreEarned));
