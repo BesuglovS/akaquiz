@@ -12,6 +12,7 @@ const {
   asyncErrorHandler,
   initGlobalErrorHandlers,
 } = require("../middleware/errorHandler");
+const config = require("../../config");
 
 /**
  * Обработчики Socket.IO событий
@@ -247,7 +248,7 @@ function setupSocketRoutes(io) {
           return;
         }
 
-        if (timeElapsed > 15 + 0.5) return; // TIME_LIMIT + погрешность
+        if (timeElapsed > config.game.timeLimit + 0.5) return; // TIME_LIMIT + погрешность
 
         if (socket.answered) return;
 

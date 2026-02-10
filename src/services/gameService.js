@@ -1,4 +1,5 @@
 const { loadQuizFile, shuffleArray } = require("../utils/quizParser");
+const config = require("../../config");
 
 /**
  * Сервис для управления игровыми данными и состоянием
@@ -96,7 +97,7 @@ class GameService {
         question: question.question,
         questionImg: question.questionImg,
         options: question.options,
-        timeLeft: 15, // TIME_LIMIT
+        timeLeft: config.game.timeLimit,
         questionNumber: this.currentQuestionIndex + 1,
         totalQuestions: this.quizData.length,
       };
@@ -234,7 +235,7 @@ class GameService {
     if (isCorrect && nickname) {
       const MAX_SCORE = 100;
       const MIN_SCORE = 20;
-      const TIME_LIMIT = 15;
+      const TIME_LIMIT = config.game.timeLimit;
 
       let scoreEarned = Math.round(
         MAX_SCORE - (timeElapsed * (MAX_SCORE - MIN_SCORE)) / TIME_LIMIT,

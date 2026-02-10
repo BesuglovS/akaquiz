@@ -10,6 +10,7 @@ const io = new Server(server);
 
 // Подключаем модули
 const setupSocketRoutes = require("./src/routes/socketRoutes");
+const config = require("./config");
 
 // Статические файлы
 app.use(express.static(path.join(__dirname, "public")));
@@ -19,7 +20,9 @@ setupSocketRoutes(io);
 
 console.log("Сервер запущен");
 
-const port = process.env.PORT || 80;
-server.listen(port, "0.0.0.0", () => {
-  console.log(`Сервер: http://localhost:${port}`);
+const port = config.server.port;
+const host = config.server.host;
+
+server.listen(port, host, () => {
+  console.log(`Сервер: http://${host}:${port}`);
 });

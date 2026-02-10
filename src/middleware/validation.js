@@ -1,6 +1,7 @@
 /**
  * Middleware для валидации входящих данных
  */
+const config = require("../../config");
 
 /**
  * Валидация пароля ведущего
@@ -48,10 +49,10 @@ function validateNickname(nickname) {
     };
   }
 
-  if (trimmed.length > 15) {
+  if (trimmed.length > config.game.maxNicknameLength) {
     return {
       isValid: false,
-      error: "Никнейм не может быть длиннее 15 символов",
+      error: `Никнейм не может быть длиннее ${config.game.maxNicknameLength} символов`,
     };
   }
 
@@ -158,10 +159,10 @@ function validateResponseTime(timeElapsed) {
     };
   }
 
-  if (timeElapsed > 60) {
+  if (timeElapsed > config.game.timeLimit * 4) {
     return {
       isValid: false,
-      error: "Время ответа не может быть больше 60 секунд",
+      error: `Время ответа не может быть больше ${config.game.timeLimit * 4} секунд`,
     };
   }
 

@@ -1,0 +1,41 @@
+{
+  "server": {
+    "port": 80,
+    "host": "0.0.0.0",
+    "cors": {
+      "origin": "*",
+      "methods": ["GET", "POST"],
+      "credentials": true
+    }
+  },
+  "game": {
+    "timeLimit": 15,
+    "maxNicknameLength": 20,
+    "minNicknameLength": 2,
+    "maxPlayers": 100,
+    "shuffleQuestions": true,
+    "defaultQuestionCount": 10
+  },
+  "security": {
+    "hostPassword": "rty6tedde",
+    "maxLoginAttempts": 3,
+    "sessionTimeout": 3600000
+  },
+  "paths": {
+    "quizzes": "./quizzes",
+    "public": "./public",
+    "uploads": "./uploads"
+  },
+  "logging": {
+    "level": "info",
+    "enableConsole": true,
+    "enableFile": false,
+    "logFile": "./logs/server.log"
+  },
+  "features": {
+    "analytics": true,
+    "csvExport": true,
+    "darkTheme": true,
+    "imageSupport": true
+  }
+}
