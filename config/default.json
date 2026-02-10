@@ -14,7 +14,11 @@
     "minNicknameLength": 2,
     "maxPlayers": 100,
     "shuffleQuestions": true,
-    "defaultQuestionCount": 10
+    "defaultQuestionCount": 10,
+    "scoring": {
+      "maxScore": 100,
+      "minScore": 20
+    }
   },
   "security": {
     "hostPassword": "rty6tedde",

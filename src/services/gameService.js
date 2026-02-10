@@ -234,8 +234,8 @@ class GameService {
     // Начисление очков
     let scoreEarned = 0;
     if (isCorrect && nickname) {
-      const MAX_SCORE = 100;
-      const MIN_SCORE = 20;
+      const MAX_SCORE = config.game.scoring.maxScore;
+      const MIN_SCORE = config.game.scoring.minScore;
       const TIME_LIMIT = config.game.timeLimit;
 
       scoreEarned = Math.round(
