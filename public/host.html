@@ -345,10 +345,8 @@
           showError("Введите пароль");
           return;
         }
-        // Добавляем анимацию загрузки
-        submitBtn.innerHTML =
-          '<span class="loading-spinner"></span><span class="loading-text">Проверка...</span>';
-        submitBtn.disabled = true;
+        // Показываем индикатор загрузки
+        showLoadingIndicator(submitBtn, "Проверка...");
         socket.emit("authenticateHost", pwd);
       };
 
@@ -359,6 +357,14 @@
       function showError(msg) {
         errorMsg.textContent = msg;
         errorMsg.classList.remove("hidden");
+      }
+
+      function showLoadingIndicator(button, text) {
+        button.innerHTML = `
+          <span class="loading-spinner"></span>
+          <span class="loading-text">${text}</span>
+        `;
+        button.disabled = true;
       }
 
       socket.on("hostAuthResult", (result) => {
@@ -412,10 +418,8 @@
         const fileName = quizSelect.value;
         if (!fileName) return;
 
-        // Добавляем анимацию загрузки
-        loadBtn.innerHTML =
-          '<span class="loading-spinner"></span><span class="loading-text">Загрузка...</span>';
-        loadBtn.disabled = true;
+        // Показываем индикатор загрузки
+        showLoadingIndicator(loadBtn, "Загрузка...");
         loadBtn.classList.add("pulse-animation");
 
         const shouldShuffle =

@@ -53,6 +53,14 @@
           <button id="join-btn" class="btn primary full-width">
             Войти в игру
           </button>
+          <div
+            id="loadingIndicator"
+            class="loading-indicator"
+            style="display: none"
+          >
+            <div class="spinner"></div>
+            <span id="loadingText">Подключение...</span>
+          </div>
         </div>
         <div id="lobby-status" class="status-badge">Ожидание игроков...</div>
       </div>
@@ -122,6 +130,8 @@
         const nick = document.getElementById("nick-input").value.trim();
         if (nick) {
           myNick = nick; // <-- сохраняем ник
+          // Показываем индикатор загрузки
+          showLoadingIndicator(true, "Подключение...");
           socket.emit("join", nick);
           loginDiv.classList.add("hidden");
           gameDiv.classList.remove("hidden");
@@ -352,6 +362,18 @@
 
       function updateThemeIcon(theme) {
         themeToggle.innerHTML = theme === "dark" ? "☀️" : "🌙";
+      }
+
+      function showLoadingIndicator(show, text) {
+        const indicator = document.getElementById("loadingIndicator");
+        const loadingText = document.getElementById("loadingText");
+
+        if (show) {
+          indicator.style.display = "flex";
+          loadingText.textContent = text;
+        } else {
+          indicator.style.display = "none";
+        }
       }
     </script>
   </body>
