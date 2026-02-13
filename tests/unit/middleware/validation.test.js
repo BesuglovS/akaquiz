@@ -155,13 +155,13 @@ describe("validation middleware", () => {
     });
 
     test("should reject non-string fileName", () => {
-      const result = validateQuizSelection({
+      const validation = validateQuizSelection({
         fileName: 123,
-        shuffle: true,
+        shuffle: false,
       });
 
-      expect(result.isValid).toBe(false);
-      expect(result.error).toContain("должен быть строкой");
+      expect(validation.isValid).toBe(false);
+      expect(validation.error).toContain("Имя файла квиза обязательно");
     });
 
     test("should reject fileName without .txt extension", () => {

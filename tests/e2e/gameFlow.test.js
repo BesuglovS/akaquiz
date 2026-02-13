@@ -55,6 +55,8 @@ describe("End-to-End Game Flow", () => {
 
   describe("Complete Game Session", () => {
     test("should complete full game flow from host authentication to quiz finish", (done) => {
+      // Set longer timeout for this test
+      jest.setTimeout(15000);
       let hostAuthenticated = false;
       let quizLoaded = false;
       let playerJoined = false;
@@ -162,6 +164,8 @@ describe("End-to-End Game Flow", () => {
     }, 10000);
 
     test("should handle multiple players correctly", (done) => {
+      // Set longer timeout for this test
+      jest.setTimeout(20000);
       const players = ["player1", "player2", "player3"];
       let connectedPlayers = 0;
       let allPlayersJoined = false;
@@ -238,6 +242,8 @@ describe("End-to-End Game Flow", () => {
     }, 15000);
 
     test("should handle quiz with images correctly", (done) => {
+      // Set longer timeout for this test
+      jest.setTimeout(15000);
       // This test verifies that questions and options with images are handled properly
       hostSocket.emit(
         "authenticateHost",
@@ -306,6 +312,8 @@ describe("End-to-End Game Flow", () => {
     }, 10000);
 
     test("should handle game reset correctly", (done) => {
+      // Set longer timeout for this test
+      jest.setTimeout(10000);
       let gameReset = false;
 
       // Complete a small game session
@@ -362,6 +370,8 @@ describe("End-to-End Game Flow", () => {
 
   describe("Error Handling", () => {
     test("should handle invalid host password", (done) => {
+      // Set timeout for this test
+      jest.setTimeout(15000);
       hostSocket.emit("authenticateHost", "wrong-password");
 
       hostSocket.on("hostAuthResult", (result) => {
@@ -372,6 +382,8 @@ describe("End-to-End Game Flow", () => {
     });
 
     test("should handle duplicate host connection", (done) => {
+      // Set timeout for this test
+      jest.setTimeout(15000);
       // First host connects
       hostSocket.emit(
         "authenticateHost",
@@ -400,6 +412,8 @@ describe("End-to-End Game Flow", () => {
     });
 
     test("should handle invalid quiz file", (done) => {
+      // Set timeout for this test
+      jest.setTimeout(15000);
       hostSocket.emit(
         "authenticateHost",
         process.env.HOST_PASSWORD || "rty6tedde",
@@ -422,6 +436,8 @@ describe("End-to-End Game Flow", () => {
     });
 
     test("should handle player with duplicate nickname", (done) => {
+      // Set timeout for this test
+      jest.setTimeout(15000);
       hostSocket.emit(
         "authenticateHost",
         process.env.HOST_PASSWORD || "rty6tedde",

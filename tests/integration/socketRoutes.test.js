@@ -26,6 +26,7 @@ describe("socketRoutes integration", () => {
           callback(mockSocket);
         }
       }),
+      emit: jest.fn(),
     };
 
     // Mock socket

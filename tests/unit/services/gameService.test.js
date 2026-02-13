@@ -10,6 +10,7 @@ describe("GameService", () => {
 
   beforeEach(() => {
     gameService = require("../../../src/services/gameService");
+    gameService.resetGame();
     mockQuizData = [
       {
         question: "Question 1?",
