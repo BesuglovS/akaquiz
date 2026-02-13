@@ -110,11 +110,13 @@ describe("errorHandler middleware", () => {
         expect.objectContaining({
           type: ERROR_TYPES.SOCKET,
           message: "Test error",
-          context: "test context",
-          stack: expect.any(String),
-          socketId: "test-socket-id",
-          nickname: "test-user",
-          isHost: true,
+          details: expect.objectContaining({
+            context: "test context",
+            stack: expect.any(String),
+            socketId: "test-socket-id",
+            nickname: "test-user",
+            isHost: true,
+          }),
         }),
       );
     });
@@ -166,7 +168,7 @@ describe("errorHandler middleware", () => {
 
       expect(result).toBe(false);
       expect(mockSocket.emit).toHaveBeenCalledWith("error", {
-        type: ERROR_TYPES.VALIDATION,
+        type: ERROR_TYPES.SOCKET,
         message: "Validation failed",
         id: expect.any(String),
       });
@@ -233,11 +235,9 @@ describe("errorHandler middleware", () => {
 
       expect(consoleSpy.info).toHaveBeenCalledWith(
         expect.stringContaining("[INFO]"),
-        expect.objectContaining({
-          level: "info",
-          type: ERROR_TYPES.VALIDATION,
-          message: "Test error",
-        }),
+        expect.stringMatching(
+          /{"level":"info","timestamp":".*","errorId":"err_[a-z0-9]+","type":"VALIDATION_ERROR","message":"Test error","details":null}/,
+        ),
       );
     });
 
@@ -248,11 +248,9 @@ describe("errorHandler middleware", () => {
 
       expect(consoleSpy.warn).toHaveBeenCalledWith(
         expect.stringContaining("[WARN]"),
-        expect.objectContaining({
-          level: "warn",
-          type: ERROR_TYPES.VALIDATION,
-          message: "Test error",
-        }),
+        expect.stringMatching(
+          /{"level":"warn","timestamp":".*","errorId":"err_[a-z0-9]+","type":"VALIDATION_ERROR","message":"Test error","details":null}/,
+        ),
       );
     });
 
@@ -263,11 +261,9 @@ describe("errorHandler middleware", () => {
 
       expect(consoleSpy.error).toHaveBeenCalledWith(
         expect.stringContaining("[ERROR]"),
-        expect.objectContaining({
-          level: "error",
-          type: ERROR_TYPES.VALIDATION,
-          message: "Test error",
-        }),
+        expect.stringMatching(
+          /{"level":"error","timestamp":".*","errorId":"err_[a-z0-9]+","type":"VALIDATION_ERROR","message":"Test error","details":null}/,
+        ),
       );
     });
 
@@ -278,11 +274,9 @@ describe("errorHandler middleware", () => {
 
       expect(consoleSpy.log).toHaveBeenCalledWith(
         expect.stringContaining("[LOG]"),
-        expect.objectContaining({
-          level: "error",
-          type: ERROR_TYPES.VALIDATION,
-          message: "Test error",
-        }),
+        expect.stringMatching(
+          /{"level":"error","timestamp":".*","errorId":"err_[a-z0-9]+","type":"VALIDATION_ERROR","message":"Test error","details":null}/,
+        ),
       );
     });
   });

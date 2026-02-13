@@ -1,4 +1,4 @@
-const GameService = require("../../../src/services/gameService");
+const gameService = require("../../../src/services/gameService");
 const { loadQuizFile } = require("../../../src/utils/quizParser");
 
 // Mock the quiz parser
@@ -9,7 +9,7 @@ describe("GameService", () => {
   let mockQuizData;
 
   beforeEach(() => {
-    gameService = new GameService();
+    gameService = require("../../../src/services/gameService");
     mockQuizData = [
       {
         question: "Question 1?",

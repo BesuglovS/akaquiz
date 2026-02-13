@@ -25,7 +25,7 @@ describe("validation middleware", () => {
       const result = validateHostPassword(null);
 
       expect(result.isValid).toBe(false);
-      expect(result.error).toContain("Имя файла квиза обязательно");
+      expect(result.error).toContain("Пароль должен быть строкой");
     });
 
     test("should reject non-string password", () => {
