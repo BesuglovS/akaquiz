@@ -180,6 +180,9 @@
         quizView.classList.remove("hidden");
         mySelection = null;
 
+        // Очищаем предыдущий результат, если он отображается
+        optionsList.innerHTML = "";
+
         // 1. Отображаем текст вопроса
         document.getElementById("question-text").innerHTML = `
         ${data.question}
@@ -189,8 +192,6 @@
             : ""
         }
     `;
-
-        optionsList.innerHTML = "";
 
         // 2. Отрисовка вариантов
         const indexedOptions = data.options.map((opt, originalIndex) => ({

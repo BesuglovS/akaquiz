@@ -320,8 +320,11 @@
             <button id="show-question-analytics" class="btn secondary">
               Статистика по текущему вопросу
             </button>
-            <button id="export-csv-btn" class="btn primary">
+            <button id="export-csv-btn" class="btn secondary">
               📊 Экспорт в CSV
+            </button>
+            <button id="export-xlsx-btn" class="btn primary">
+              📈 Экспорт в Excel
             </button>
           </div>
           <div id="analytics-content" class="analytics-content"></div>
@@ -651,7 +654,15 @@
       exportCsvBtn.onclick = () => {
         exportCsvBtn.disabled = true;
         exportCsvBtn.innerText = "Экспорт...";
-        socket.emit("exportResults");
+        socket.emit("exportResults", "csv");
+      };
+
+      // Экспорт в Excel
+      const exportXlsxBtn = document.getElementById("export-xlsx-btn");
+      exportXlsxBtn.onclick = () => {
+        exportXlsxBtn.disabled = true;
+        exportXlsxBtn.innerText = "Экспорт...";
+        socket.emit("exportResults", "xlsx");
       };
 
       function showOverallAnalytics() {
@@ -765,6 +776,55 @@
               <p class="metric-label">Имя файла: quiz_results_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.csv</p>
             </div>
           `;
+      });
+
+      socket.on("xlsxExportReady", (data) => {
+        // Возвращаем кнопку в исходное состояние
+        exportXlsxBtn.disabled = false;
+        exportXlsxBtn.innerText = "📈 Экспорт в Excel";
+
+        try {
+          // Декодируем base64 данные
+          const binaryString = atob(data.data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          // Создаем Blob из бинарных данных с правильным MIME типом
+          const mimeType = data.mimeType || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+          const blob = new Blob([bytes], { type: mimeType });
+          const link = document.createElement("a");
+
+          // Создаем URL для скачивания
+          const url = URL.createObjectURL(blob);
+          link.setAttribute("href", url);
+          link.setAttribute("download", data.filename);
+          link.style.visibility = "hidden";
+
+          // Добавляем ссылку в DOM и кликаем по ней
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          // Оповещаем пользователя об успешном экспорте
+          analyticsContent.innerHTML = `
+              <div class="analytics-card">
+                <h4>✅ Экспорт завершен</h4>
+                <p>Файл Excel успешно загружен на ваш компьютер.</p>
+                <p class="metric-label">Имя файла: ${data.filename}</p>
+              </div>
+            `;
+        } catch (error) {
+          console.error("Ошибка при загрузке Excel файла:", error);
+          analyticsContent.innerHTML = `
+              <div class="analytics-card">
+                <h4>❌ Ошибка экспорта</h4>
+                <p>Не удалось загрузить файл Excel. Попробуйте снова.</p>
+                <button onclick="location.reload()" class="btn secondary">Перезагрузить страницу</button>
+              </div>
+            `;
+        }
       });
 
       function renderTimeDistribution(times) {

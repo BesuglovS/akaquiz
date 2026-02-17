@@ -305,6 +305,18 @@ class GameService {
   }
 
   /**
+   * Экспортирует результаты в выбранном формате
+   * @param {string} format - формат экспорта: 'csv' или 'xlsx'
+   * @returns {string|Buffer} CSV строка или Excel буфер
+   */
+  exportResults(format = 'csv') {
+    if (format === 'xlsx') {
+      return this.exportResultsToExcel();
+    }
+    return this.exportResultsToCSV();
+  }
+
+  /**
    * Экспортирует результаты в CSV формате
    * @returns {string} CSV строка
    */
@@ -388,6 +400,85 @@ class GameService {
     ].join("\n");
 
     return csv;
+  }
+
+  /**
+   * Экспортирует результаты в Excel формате
+   * @returns {Buffer} Excel файл в виде буфера
+   */
+  exportResultsToExcel() {
+    const XLSX = require('xlsx');
+    
+    // Создаем новую рабочую книгу
+    const workbook = XLSX.utils.book_new();
+
+    // 1. Общая статистика
+    const headers = [
+      "Никнейм",
+      "Очки",
+      "Всего ответов",
+      "Правильных ответов",
+      "Процент правильных",
+      "Среднее время ответа (сек)",
+    ];
+
+    const allScores = this.getAllPlayersScores();
+    const players = Object.keys(allScores);
+
+    const rows = players.map((nickname) => {
+      const totalAnswers = this.answerAnalytics.responseTimeDistribution.length;
+      const correctAnswers = this.answerAnalytics.correctAnswers;
+      const accuracy = totalAnswers > 0 ? (correctAnswers / totalAnswers) * 100 : 0;
+      const avgResponseTime = this.answerAnalytics.averageResponseTime;
+
+      return [
+        nickname,
+        allScores[nickname],
+        totalAnswers,
+        correctAnswers,
+        accuracy,
+        avgResponseTime,
+      ];
+    });
+
+    const generalData = [headers, ...rows];
+    const generalSheet = XLSX.utils.aoa_to_sheet(generalData);
+    XLSX.utils.book_append_sheet(workbook, generalSheet, "Общая статистика");
+
+    // 2. Статистика по вопросам
+    const questionHeaders = [
+      "Вопрос",
+      "Ответов",
+      "Правильных",
+      "Процент",
+      "Среднее время (сек)",
+    ];
+    
+    const questionRows = this.answerAnalytics.questionStats.map((question, index) => {
+      const accuracy = question.totalAnswers > 0 ? (question.correctAnswers / question.totalAnswers) * 100 : 0;
+      return [
+        question.question,
+        question.totalAnswers,
+        question.correctAnswers,
+        accuracy,
+        question.averageResponseTime,
+      ];
+    });
+
+    const questionData = [questionHeaders, ...questionRows];
+    const questionSheet = XLSX.utils.aoa_to_sheet(questionData);
+    XLSX.utils.book_append_sheet(workbook, questionSheet, "По вопросам");
+
+    // 3. Детали по времени ответов
+    const timeHeaders = ["Время ответа (сек)"];
+    const timeRows = this.answerAnalytics.responseTimeDistribution.map((time) => [time]);
+    const timeData = [timeHeaders, ...timeRows];
+    const timeSheet = XLSX.utils.aoa_to_sheet(timeData);
+    XLSX.utils.book_append_sheet(workbook, timeSheet, "Время ответов");
+
+    // Генерируем буфер Excel файла
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return buffer;
   }
 }
 

@@ -175,11 +175,58 @@ function setupSocketRoutes(io) {
             currentOptions: result.currentOptions,
           });
         }
+        
+        // Добавляем небольшую задержку перед запуском нового вопроса, чтобы игроки успели увидеть результаты
+        setTimeout(() => {
+          const nextQuestion = gameService.getNextQuestion();
+          if (nextQuestion) {
+            // Сбрасываем флаги ответов для всех игроков при начале нового вопроса
+            Array.from(activeSockets.values()).forEach((s) => {
+              if (s.nickname) {
+                s.answered = false;
+              }
+            });
+
+            io.emit("updateQuestion", nextQuestion);
+
+            // Запускаем таймер
+            let timeLeft = nextQuestion.timeLeft;
+            const timer = setInterval(() => {
+              timeLeft--;
+              io.emit("timerTick", timeLeft);
+
+              if (timeLeft <= 0) {
+                clearInterval(timer);
+                const endResult = gameService.endCurrentQuestion();
+                if (endResult) {
+                  const currentScores = gameService.getAllPlayersScores();
+                  io.emit("timeOver", {
+                    scores: currentScores,
+                    correctAnswer: endResult.correctAnswer,
+                    currentOptions: endResult.currentOptions,
+                  });
+                }
+              }
+            }, 1000);
+          } else {
+            // Квиз завершен
+            const currentScores = gameService.getAllPlayersScores();
+            io.emit("quizFinished", currentScores);
+          }
+        }, 500); // Задержка 0.5 секунды
+        
         return;
       }
 
       const question = gameService.getNextQuestion();
       if (question) {
+        // Сбрасываем флаги ответов для всех игроков при начале нового вопроса
+        Array.from(activeSockets.values()).forEach((s) => {
+          if (s.nickname) {
+            s.answered = false;
+          }
+        });
+
         io.emit("updateQuestion", question);
 
         // Запускаем таймер
@@ -230,12 +277,28 @@ function setupSocketRoutes(io) {
       socket.emit("questionAnalyticsData", analytics);
     });
 
-    // --- ЭКСПОРТ РЕЗУЛЬТАТОВ В CSV ---
-    socket.on("exportResults", () => {
+    // --- ЭКСПОРТ РЕЗУЛЬТАТОВ В CSV ИЛИ XLSX ---
+    socket.on("exportResults", (format) => {
       if (!socket.isHost) return;
 
-      const csvContent = gameService.exportResultsToCSV();
-      socket.emit("csvExportReady", csvContent);
+      try {
+        const result = gameService.exportResults(format);
+        
+        if (format === 'xlsx') {
+          // Для Excel файлов отправляем буфер в base64
+          const base64Data = Buffer.from(result).toString('base64');
+          socket.emit("xlsxExportReady", {
+            data: base64Data,
+            filename: `quiz_results_${new Date().toISOString().slice(0, 10)}.xlsx`,
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          });
+        } else {
+          // Для CSV отправляем текст
+          socket.emit("csvExportReady", result);
+        }
+      } catch (error) {
+        handleSocketError(socket, error, "exportResults");
+      }
     });
 
     socket.on("submitAnswer", (index) => {
@@ -250,6 +313,7 @@ function setupSocketRoutes(io) {
 
         if (timeElapsed > config.game.timeLimit + 0.5) return; // TIME_LIMIT + погрешность
 
+        // Проверяем, уже ли ответил пользователь (важно проверять до обработки)
         if (socket.answered) return;
 
         const currentQuestionIndex = gameService.getCurrentQuestionIndex();
@@ -270,6 +334,9 @@ function setupSocketRoutes(io) {
           return;
         }
 
+        // Устанавливаем флаг ответа сразу, чтобы предотвратить повторные попытки
+        socket.answered = true;
+
         // Обработка ответа
         const result = gameService.processAnswer(
           socket.nickname,
@@ -278,8 +345,6 @@ function setupSocketRoutes(io) {
         );
 
         if (result.success) {
-          socket.answered = true;
-
           // Обновляем статистику
           io.emit("updateStats", gameService.votes);
 

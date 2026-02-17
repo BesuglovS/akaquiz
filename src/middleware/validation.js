@@ -57,7 +57,7 @@ function validateNickname(nickname) {
   }
 
   // Проверка на недопустимые символы (разрешены буквы, цифры, пробелы, дефисы, подчеркивания)
-  if (!/^[a-zA-Z0-9\s\-_]+$/.test(trimmed)) {
+  if (!/^[a-zA-ZА-Яа-яЁё0-9\s\-_]+$/.test(trimmed)) {
     return {
       isValid: false,
       error: "Никнейм содержит недопустимые символы",
