@@ -90,6 +90,11 @@ function setupSocketRoutes(io) {
       socket.emit("quizList", files);
     });
 
+    // Отправляем конфигурацию клиенту
+    socket.on("getConfig", () => {
+      socket.emit("configData", config);
+    });
+
     // Ведущий выбирает квиз
     socket.on("selectQuiz", (data) => {
       if (!socket.isHost) return;
@@ -104,6 +109,7 @@ function setupSocketRoutes(io) {
           data.fileName,
           data.shuffle,
           data.questionCount,
+          data.timeLimit,
         );
 
         if (result.success) {
@@ -175,7 +181,7 @@ function setupSocketRoutes(io) {
             currentOptions: result.currentOptions,
           });
         }
-        
+
         // Добавляем небольшую задержку перед запуском нового вопроса, чтобы игроки успели увидеть результаты
         setTimeout(() => {
           const nextQuestion = gameService.getNextQuestion();
@@ -214,7 +220,7 @@ function setupSocketRoutes(io) {
             io.emit("quizFinished", currentScores);
           }
         }, 500); // Задержка 0.5 секунды
-        
+
         return;
       }
 
@@ -283,14 +289,15 @@ function setupSocketRoutes(io) {
 
       try {
         const result = gameService.exportResults(format);
-        
-        if (format === 'xlsx') {
+
+        if (format === "xlsx") {
           // Для Excel файлов отправляем буфер в base64
-          const base64Data = Buffer.from(result).toString('base64');
+          const base64Data = Buffer.from(result).toString("base64");
           socket.emit("xlsxExportReady", {
             data: base64Data,
             filename: `quiz_results_${new Date().toISOString().slice(0, 10)}.xlsx`,
-            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           });
         } else {
           // Для CSV отправляем текст

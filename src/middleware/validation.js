@@ -102,7 +102,7 @@ function validateAnswerIndex(answerIndex, maxOptions) {
  * @returns {Object} результат валидации
  */
 function validateQuizSelection(data) {
-  const { fileName, shuffle, questionCount } = data;
+  const { fileName, shuffle, questionCount, timeLimit } = data;
 
   if (!fileName || typeof fileName !== "string") {
     return {
@@ -126,17 +126,36 @@ function validateQuizSelection(data) {
   }
 
   if (questionCount !== null && typeof questionCount !== "undefined") {
-    if (typeof questionCount !== "number" || !Number.isInteger(questionCount)) {
+    if (
+      questionCount !== "Все" &&
+      (typeof questionCount !== "number" || !Number.isInteger(questionCount))
+    ) {
       return {
         isValid: false,
-        error: "Количество вопросов должно быть целым числом",
+        error: "Количество вопросов должно быть целым числом или 'Все'",
       };
     }
 
-    if (questionCount <= 0) {
+    if (questionCount !== "Все" && questionCount <= 0) {
       return {
         isValid: false,
         error: "Количество вопросов должно быть больше 0",
+      };
+    }
+  }
+
+  if (timeLimit !== null && typeof timeLimit !== "undefined") {
+    if (typeof timeLimit !== "number" || !Number.isInteger(timeLimit)) {
+      return {
+        isValid: false,
+        error: "Время ответа должно быть целым числом",
+      };
+    }
+
+    if (timeLimit < 5 || timeLimit > 300) {
+      return {
+        isValid: false,
+        error: "Время ответа должно быть от 5 до 300 секунд",
       };
     }
   }

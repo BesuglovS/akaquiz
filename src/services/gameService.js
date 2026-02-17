@@ -13,6 +13,7 @@ class GameService {
     this.answeredUsers = new Set();
     this.isQuestionActive = false;
     this.questionStartTime = 0;
+    this.customTimeLimit = null; // Кастомное время ответа
 
     // Аналитика
     this.answerAnalytics = {
@@ -29,9 +30,10 @@ class GameService {
    * @param {string} fileName - имя файла
    * @param {boolean} shuffle - перемешивать ли вопросы
    * @param {number|null} questionCount - количество вопросов
+   * @param {number|null} timeLimit - время ответа на вопрос
    * @returns {Object} результат загрузки
    */
-  loadQuiz(fileName, shuffle = false, questionCount = null) {
+  loadQuiz(fileName, shuffle = false, questionCount = null, timeLimit = null) {
     try {
       let loadedData = loadQuizFile(fileName);
 
@@ -41,6 +43,7 @@ class GameService {
 
       // Если задано ограничение на количество вопросов — обрезаем массив
       if (
+        questionCount !== "Все" &&
         typeof questionCount === "number" &&
         questionCount > 0 &&
         questionCount < loadedData.length
@@ -51,6 +54,7 @@ class GameService {
       this.quizData = loadedData;
       this.currentQuestionIndex = -1;
       this.scores = {};
+      this.customTimeLimit = timeLimit; // Сохраняем кастомное время
 
       // Сброс аналитики при загрузке нового квиза
       this.answerAnalytics = {
@@ -66,7 +70,8 @@ class GameService {
         fileName,
         shuffle,
         questionCount: loadedData.length,
-        message: `Загружен квиз: ${fileName}, перемешан: ${shuffle}, вопросов: ${loadedData.length}`,
+        timeLimit: timeLimit || config.game.timeLimit,
+        message: `Загружен квиз: ${fileName}, перемешан: ${shuffle}, вопросов: ${loadedData.length}, время: ${timeLimit || config.game.timeLimit}с`,
       };
     } catch (error) {
       console.error("Ошибка загрузки квиза:", error);
@@ -93,11 +98,13 @@ class GameService {
       this.questionStartTime = Date.now();
 
       const question = this.quizData[this.currentQuestionIndex];
+      const timeLimit = this.customTimeLimit || config.game.timeLimit;
+
       return {
         question: question.question,
         questionImg: question.questionImg,
         options: question.options,
-        timeLeft: config.game.timeLimit,
+        timeLeft: timeLimit,
         questionNumber: this.currentQuestionIndex + 1,
         totalQuestions: this.quizData.length,
       };
@@ -236,7 +243,7 @@ class GameService {
     if (isCorrect && nickname) {
       const MAX_SCORE = config.game.scoring.maxScore;
       const MIN_SCORE = config.game.scoring.minScore;
-      const TIME_LIMIT = config.game.timeLimit;
+      const TIME_LIMIT = this.customTimeLimit || config.game.timeLimit;
 
       scoreEarned = Math.round(
         MAX_SCORE - (timeElapsed * (MAX_SCORE - MIN_SCORE)) / TIME_LIMIT,
@@ -309,8 +316,8 @@ class GameService {
    * @param {string} format - формат экспорта: 'csv' или 'xlsx'
    * @returns {string|Buffer} CSV строка или Excel буфер
    */
-  exportResults(format = 'csv') {
-    if (format === 'xlsx') {
+  exportResults(format = "csv") {
+    if (format === "xlsx") {
       return this.exportResultsToExcel();
     }
     return this.exportResultsToCSV();
@@ -407,8 +414,8 @@ class GameService {
    * @returns {Buffer} Excel файл в виде буфера
    */
   exportResultsToExcel() {
-    const XLSX = require('xlsx');
-    
+    const XLSX = require("xlsx");
+
     // Создаем новую рабочую книгу
     const workbook = XLSX.utils.book_new();
 
@@ -428,7 +435,8 @@ class GameService {
     const rows = players.map((nickname) => {
       const totalAnswers = this.answerAnalytics.responseTimeDistribution.length;
       const correctAnswers = this.answerAnalytics.correctAnswers;
-      const accuracy = totalAnswers > 0 ? (correctAnswers / totalAnswers) * 100 : 0;
+      const accuracy =
+        totalAnswers > 0 ? (correctAnswers / totalAnswers) * 100 : 0;
       const avgResponseTime = this.answerAnalytics.averageResponseTime;
 
       return [
@@ -453,17 +461,22 @@ class GameService {
       "Процент",
       "Среднее время (сек)",
     ];
-    
-    const questionRows = this.answerAnalytics.questionStats.map((question, index) => {
-      const accuracy = question.totalAnswers > 0 ? (question.correctAnswers / question.totalAnswers) * 100 : 0;
-      return [
-        question.question,
-        question.totalAnswers,
-        question.correctAnswers,
-        accuracy,
-        question.averageResponseTime,
-      ];
-    });
+
+    const questionRows = this.answerAnalytics.questionStats.map(
+      (question, index) => {
+        const accuracy =
+          question.totalAnswers > 0
+            ? (question.correctAnswers / question.totalAnswers) * 100
+            : 0;
+        return [
+          question.question,
+          question.totalAnswers,
+          question.correctAnswers,
+          accuracy,
+          question.averageResponseTime,
+        ];
+      },
+    );
 
     const questionData = [questionHeaders, ...questionRows];
     const questionSheet = XLSX.utils.aoa_to_sheet(questionData);
@@ -471,13 +484,15 @@ class GameService {
 
     // 3. Детали по времени ответов
     const timeHeaders = ["Время ответа (сек)"];
-    const timeRows = this.answerAnalytics.responseTimeDistribution.map((time) => [time]);
+    const timeRows = this.answerAnalytics.responseTimeDistribution.map(
+      (time) => [time],
+    );
     const timeData = [timeHeaders, ...timeRows];
     const timeSheet = XLSX.utils.aoa_to_sheet(timeData);
     XLSX.utils.book_append_sheet(workbook, timeSheet, "Время ответов");
 
     // Генерируем буфер Excel файла
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
     return buffer;
   }
 }
