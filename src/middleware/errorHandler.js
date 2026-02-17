@@ -136,16 +136,17 @@ function logError(error, level = "error") {
   // В зависимости от уровня логирования
   switch (level) {
     case "error":
-      console.error("[ERROR]", JSON.stringify(logEntry, null, 2));
+      console.error("[ERROR]", JSON.stringify(logEntry));
       break;
     case "warn":
-      console.warn("[WARN]", JSON.stringify(logEntry, null, 2));
+      console.warn("[WARN]", JSON.stringify(logEntry));
       break;
     case "info":
-      console.info("[INFO]", JSON.stringify(logEntry, null, 2));
+      console.info("[INFO]", JSON.stringify(logEntry));
       break;
     default:
-      console.log("[LOG]", JSON.stringify(logEntry, null, 2));
+      console.error("[ERROR]", JSON.stringify(logEntry));
+      break;
   }
 }
 

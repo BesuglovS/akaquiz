@@ -37,6 +37,9 @@ class GameService {
     try {
       let loadedData = loadQuizFile(fileName);
 
+      // Сохраняем оригинальный порядок для проверки перемешивания
+      const originalData = [...loadedData];
+
       if (shuffle) {
         loadedData = shuffleArray(loadedData);
       }
@@ -173,6 +176,7 @@ class GameService {
     this.currentQuestionIndex = -1;
     this.scores = {};
     this.quizData = [];
+    this.isQuestionActive = false;
     this.answerAnalytics = {
       totalAnswers: 0,
       correctAnswers: 0,
@@ -191,10 +195,18 @@ class GameService {
    */
   processAnswer(nickname, answerIndex, timeElapsed) {
     const currentQ = this.quizData[this.currentQuestionIndex];
+
+    // Проверяем, есть ли текущий вопрос
     if (!currentQ) {
       return { success: false, reason: "no_question" };
     }
 
+    // Проверяем, активен ли вопрос
+    if (!this.isQuestionActive) {
+      return { success: false, reason: "no_question" };
+    }
+
+    // Проверяем, уже ли ответил пользователь
     if (this.answeredUsers.has(nickname)) {
       return { success: false, reason: "already_answered" };
     }
