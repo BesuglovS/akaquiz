@@ -15,6 +15,64 @@ const {
 const config = require("../../config");
 
 /**
+ * Запускает таймер вопроса
+ * @param {Object} io - экземпляр Socket.IO
+ * @param {Map} activeSockets - карта активных сокетов
+ * @param {number} timeLimit - время на ответ в секундах
+ * @returns {Object} объект с методами управления таймером
+ */
+function startQuestionTimer(io, activeSockets, timeLimit) {
+  let timeLeft = timeLimit;
+  let timerId = null;
+  let isEnded = false;
+
+  const endQuestion = () => {
+    if (isEnded) return null;
+    isEnded = true;
+    if (timerId) clearInterval(timerId);
+    return gameService.endCurrentQuestion();
+  };
+
+  timerId = setInterval(() => {
+    timeLeft--;
+    io.emit("timerTick", timeLeft);
+
+    if (timeLeft <= 0) {
+      clearInterval(timerId);
+      const result = endQuestion();
+      if (result) {
+        const currentScores = gameService.getAllPlayersScores();
+        io.emit("timeOver", {
+          scores: currentScores,
+          correctAnswer: result.correctAnswer,
+          currentOptions: result.currentOptions,
+        });
+      }
+    }
+  }, 1000);
+
+  return {
+    getTimeLeft: () => timeLeft,
+    endQuestion,
+    clearTimer: () => {
+      if (timerId) clearInterval(timerId);
+    },
+  };
+}
+
+/**
+ * Сбрасывает флаги ответов для всех игроков
+ * @param {Map} activeSockets - карта активных сокетов
+ */
+function resetAnswerFlags(activeSockets) {
+  Array.from(activeSockets.values()).forEach((s) => {
+    if (s.nickname) {
+      s.answered = false;
+    }
+  });
+}
+
+/**
  * Обработчики Socket.IO событий
  * @param {Socket} io - экземпляр Socket.IO
  */
@@ -24,6 +82,9 @@ function setupSocketRoutes(io) {
 
   // Хранилище активных сокетов для проверки уникальности ников
   const activeSockets = new Map();
+
+  // Текущий таймер вопроса
+  let currentTimer = null;
 
   io.on("connection", (socket) => {
     console.log("Клиент подключился:", socket.id);
@@ -37,9 +98,7 @@ function setupSocketRoutes(io) {
         }
 
         // Проверяем, не занят ли уже хост
-        const existingHost = Array.from(activeSockets.values()).find(
-          (s) => s.isHost,
-        );
+        const existingHost = Array.from(activeSockets.values()).find((s) => s.isHost);
         if (existingHost) {
           socket.emit("hostAuthResult", {
             success: false,
@@ -48,7 +107,18 @@ function setupSocketRoutes(io) {
           return;
         }
 
-        const HOST_PASSWORD = process.env.HOST_PASSWORD || "rty6tedde";
+        const HOST_PASSWORD = process.env.HOST_PASSWORD || config.security.hostPassword;
+
+        if (!HOST_PASSWORD) {
+          console.error(
+            "ОШИБКА: HOST_PASSWORD не установлен! Установите переменную окружения HOST_PASSWORD",
+          );
+          socket.emit("hostAuthResult", {
+            success: false,
+            reason: "server_config_error",
+          });
+          return;
+        }
         if (password === HOST_PASSWORD) {
           socket.isHost = true;
           activeSockets.set(socket.id, socket);
@@ -68,6 +138,11 @@ function setupSocketRoutes(io) {
     socket.on("disconnect", () => {
       if (socket.isHost) {
         console.log("Хост отключился:", socket.id);
+        // Очищаем текущий таймер при отключении хоста
+        if (currentTimer) {
+          currentTimer.clearTimer();
+          currentTimer = null;
+        }
       } else if (socket.nickname) {
         console.log(`Игрок отключился: ${socket.nickname} (${socket.id})`);
       }
@@ -170,102 +245,82 @@ function setupSocketRoutes(io) {
     socket.on("nextQuestion", () => {
       if (!socket.isHost) return;
 
-      if (gameService.isCurrentQuestionActive()) {
-        // Завершаем текущий вопрос
-        const result = gameService.endCurrentQuestion();
-        if (result) {
+      // Функция запуска нового вопроса
+      const launchNextQuestion = () => {
+        const question = gameService.getNextQuestion();
+        if (question) {
+          resetAnswerFlags(activeSockets);
+          io.emit("updateQuestion", question);
+
+          // Очищаем предыдущий таймер если есть
+          if (currentTimer) {
+            currentTimer.clearTimer();
+          }
+
+          // Запускаем новый таймер
+          currentTimer = startQuestionTimer(io, activeSockets, question.timeLeft);
+        } else {
+          // Квиз завершен
           const currentScores = gameService.getAllPlayersScores();
-          io.emit("timeOver", {
-            scores: currentScores,
-            correctAnswer: result.correctAnswer,
-            currentOptions: result.currentOptions,
-          });
+          io.emit("quizFinished", currentScores);
+        }
+      };
+
+      if (gameService.isCurrentQuestionActive()) {
+        // Завершаем текущий вопрос досрочно
+        if (currentTimer) {
+          const result = currentTimer.endQuestion();
+          currentTimer = null;
+
+          if (result) {
+            const currentScores = gameService.getAllPlayersScores();
+            io.emit("timeOver", {
+              scores: currentScores,
+              correctAnswer: result.correctAnswer,
+              currentOptions: result.currentOptions,
+            });
+          }
         }
 
-        // Добавляем небольшую задержку перед запуском нового вопроса, чтобы игроки успели увидеть результаты
-        setTimeout(() => {
-          const nextQuestion = gameService.getNextQuestion();
-          if (nextQuestion) {
-            // Сбрасываем флаги ответов для всех игроков при начале нового вопроса
-            Array.from(activeSockets.values()).forEach((s) => {
-              if (s.nickname) {
-                s.answered = false;
-              }
-            });
-
-            io.emit("updateQuestion", nextQuestion);
-
-            // Запускаем таймер
-            let timeLeft = nextQuestion.timeLeft;
-            const timer = setInterval(() => {
-              timeLeft--;
-              io.emit("timerTick", timeLeft);
-
-              if (timeLeft <= 0) {
-                clearInterval(timer);
-                const endResult = gameService.endCurrentQuestion();
-                if (endResult) {
-                  const currentScores = gameService.getAllPlayersScores();
-                  io.emit("timeOver", {
-                    scores: currentScores,
-                    correctAnswer: endResult.correctAnswer,
-                    currentOptions: endResult.currentOptions,
-                  });
-                }
-              }
-            }, 1000);
-          } else {
-            // Квиз завершен
-            const currentScores = gameService.getAllPlayersScores();
-            io.emit("quizFinished", currentScores);
-          }
-        }, 500); // Задержка 0.5 секунды
-
+        // Добавляем небольшую задержку перед запуском нового вопроса
+        setTimeout(launchNextQuestion, 500);
         return;
       }
 
-      const question = gameService.getNextQuestion();
-      if (question) {
-        // Сбрасываем флаги ответов для всех игроков при начале нового вопроса
-        Array.from(activeSockets.values()).forEach((s) => {
-          if (s.nickname) {
-            s.answered = false;
-          }
-        });
-
-        io.emit("updateQuestion", question);
-
-        // Запускаем таймер
-        let timeLeft = question.timeLeft;
-        const timer = setInterval(() => {
-          timeLeft--;
-          io.emit("timerTick", timeLeft);
-
-          if (timeLeft <= 0) {
-            clearInterval(timer);
-            const result = gameService.endCurrentQuestion();
-            if (result) {
-              const currentScores = gameService.getAllPlayersScores();
-              io.emit("timeOver", {
-                scores: currentScores,
-                correctAnswer: result.correctAnswer,
-                currentOptions: result.currentOptions,
-              });
-            }
-          }
-        }, 1000);
-      } else {
-        // Квиз завершен
-        const currentScores = gameService.getAllPlayersScores();
-        io.emit("quizFinished", currentScores);
-      }
+      launchNextQuestion();
     });
 
     socket.on("resetGame", () => {
       if (!socket.isHost) return;
 
+      // Очищаем таймер при сбросе игры
+      if (currentTimer) {
+        currentTimer.clearTimer();
+        currentTimer = null;
+      }
+
       gameService.resetGame();
       io.emit("gameReset");
+    });
+
+    // Пауза/продолжение игры
+    socket.on("togglePause", () => {
+      if (!socket.isHost) return;
+
+      if (currentTimer && gameService.isCurrentQuestionActive()) {
+        const isPaused = gameService.togglePause();
+
+        if (isPaused) {
+          // Пауза - останавливаем таймер
+          currentTimer.clearTimer();
+          io.emit("gamePaused");
+        } else {
+          // Продолжение - запускаем таймер с оставшимся временем
+          const timeLeft = gameService.getRemainingTime();
+          currentTimer = startQuestionTimer(io, activeSockets, timeLeft);
+          io.emit("gameResumed", { timeLeft });
+        }
+      }
     });
 
     // --- НОВЫЕ СОБЫТИЯ ДЛЯ АНАЛИТИКИ ---
@@ -296,8 +351,7 @@ function setupSocketRoutes(io) {
           socket.emit("xlsxExportReady", {
             data: base64Data,
             filename: `quiz_results_${new Date().toISOString().slice(0, 10)}.xlsx`,
-            mimeType:
-              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           });
         } else {
           // Для CSV отправляем текст
@@ -345,25 +399,16 @@ function setupSocketRoutes(io) {
         socket.answered = true;
 
         // Обработка ответа
-        const result = gameService.processAnswer(
-          socket.nickname,
-          index,
-          timeElapsed,
-        );
+        const result = gameService.processAnswer(socket.nickname, index, timeElapsed);
 
         if (result.success) {
           // Обновляем статистику
           io.emit("updateStats", gameService.votes);
 
           // Проверяем, все ли ответили
-          const totalPlayers = Array.from(activeSockets.values()).filter(
-            (s) => s.nickname,
-          ).length;
+          const totalPlayers = Array.from(activeSockets.values()).filter((s) => s.nickname).length;
 
-          if (
-            gameService.answeredUsers.size >= totalPlayers &&
-            totalPlayers > 0
-          ) {
+          if (gameService.answeredUsers.size >= totalPlayers && totalPlayers > 0) {
             const endResult = gameService.endCurrentQuestion();
             if (endResult) {
               const currentScores = gameService.getAllPlayersScores();

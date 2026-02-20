@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  akaquiz:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: akaquiz
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+      - PORT=80
+      - HOST=0.0.0.0
+      - HOST_PASSWORD=${HOST_PASSWORD}
+    volumes:
+      - ./quizzes:/app/quizzes:ro
+      - ./public/media:/app/public/media:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:80/",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

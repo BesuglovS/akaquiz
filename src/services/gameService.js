@@ -14,6 +14,9 @@ class GameService {
     this.isQuestionActive = false;
     this.questionStartTime = 0;
     this.customTimeLimit = null; // Кастомное время ответа
+    this.isPaused = false;
+    this.pauseStartTime = 0;
+    this.totalPausedTime = 0;
 
     // Аналитика
     this.answerAnalytics = {
@@ -90,10 +93,7 @@ class GameService {
    * @returns {Object|null} вопрос или null если вопросы закончились
    */
   getNextQuestion() {
-    if (
-      !this.isQuestionActive &&
-      this.currentQuestionIndex < this.quizData.length - 1
-    ) {
+    if (!this.isQuestionActive && this.currentQuestionIndex < this.quizData.length - 1) {
       this.currentQuestionIndex++;
       this.isQuestionActive = true;
       this.votes = {};
@@ -163,10 +163,7 @@ class GameService {
    * @returns {boolean}
    */
   isQuizFinished() {
-    return (
-      this.currentQuestionIndex >= this.quizData.length - 1 &&
-      !this.isQuestionActive
-    );
+    return this.currentQuestionIndex >= this.quizData.length - 1 && !this.isQuestionActive;
   }
 
   /**
@@ -231,8 +228,7 @@ class GameService {
       };
     }
 
-    const questionStat =
-      this.answerAnalytics.questionStats[this.currentQuestionIndex];
+    const questionStat = this.answerAnalytics.questionStats[this.currentQuestionIndex];
     questionStat.totalAnswers++;
     questionStat.responseTimes.push(timeElapsed);
 
@@ -242,8 +238,7 @@ class GameService {
 
     // Обновляем среднее время ответа для вопроса
     questionStat.averageResponseTime =
-      questionStat.responseTimes.reduce((a, b) => a + b, 0) /
-      questionStat.responseTimes.length;
+      questionStat.responseTimes.reduce((a, b) => a + b, 0) / questionStat.responseTimes.length;
 
     // Обновляем общее среднее время ответа
     this.answerAnalytics.averageResponseTime =
@@ -257,9 +252,7 @@ class GameService {
       const MIN_SCORE = config.game.scoring.minScore;
       const TIME_LIMIT = this.customTimeLimit || config.game.timeLimit;
 
-      scoreEarned = Math.round(
-        MAX_SCORE - (timeElapsed * (MAX_SCORE - MIN_SCORE)) / TIME_LIMIT,
-      );
+      scoreEarned = Math.round(MAX_SCORE - (timeElapsed * (MAX_SCORE - MIN_SCORE)) / TIME_LIMIT);
       scoreEarned = Math.max(MIN_SCORE, Math.min(MAX_SCORE, scoreEarned));
       this.scores[nickname] = (this.scores[nickname] || 0) + scoreEarned;
     }
@@ -324,6 +317,51 @@ class GameService {
   }
 
   /**
+   * Переключает паузу игры
+   * @returns {boolean} true если игра на паузе, false если продолжена
+   */
+  togglePause() {
+    if (!this.isQuestionActive) {
+      return false;
+    }
+
+    if (this.isPaused) {
+      // Продолжаем игру - вычисляем время паузы
+      const pauseDuration = Date.now() - this.pauseStartTime;
+      this.totalPausedTime += pauseDuration;
+      this.isPaused = false;
+      return false;
+    } else {
+      // Ставим на паузу
+      this.isPaused = true;
+      this.pauseStartTime = Date.now();
+      return true;
+    }
+  }
+
+  /**
+   * Получает оставшееся время для текущего вопроса
+   * @returns {number} оставшееся время в секундах
+   */
+  getRemainingTime() {
+    if (!this.isQuestionActive) {
+      return 0;
+    }
+
+    const timeLimit = this.customTimeLimit || config.game.timeLimit;
+    const elapsed = (Date.now() - this.questionStartTime - this.totalPausedTime) / 1000;
+    return Math.max(0, Math.ceil(timeLimit - elapsed));
+  }
+
+  /**
+   * Проверяет, на паузе ли игра
+   * @returns {boolean}
+   */
+  isGamePaused() {
+    return this.isPaused;
+  }
+
+  /**
    * Экспортирует результаты в выбранном формате
    * @param {string} format - формат экспорта: 'csv' или 'xlsx'
    * @returns {string|Buffer} CSV строка или Excel буфер
@@ -357,11 +395,8 @@ class GameService {
       const totalAnswers = this.answerAnalytics.responseTimeDistribution.length;
       const correctAnswers = this.answerAnalytics.correctAnswers;
       const accuracy =
-        totalAnswers > 0
-          ? ((correctAnswers / totalAnswers) * 100).toFixed(2)
-          : "0.00";
-      const avgResponseTime =
-        this.answerAnalytics.averageResponseTime.toFixed(2);
+        totalAnswers > 0 ? ((correctAnswers / totalAnswers) * 100).toFixed(2) : "0.00";
+      const avgResponseTime = this.answerAnalytics.averageResponseTime.toFixed(2);
 
       return [
         `"${nickname}"`,
@@ -374,32 +409,22 @@ class GameService {
     });
 
     // Добавляем строки по вопросам
-    const questionHeaders = [
-      "Вопрос",
-      "Ответов",
-      "Правильных",
-      "Процент",
-      "Среднее время (сек)",
-    ];
-    const questionRows = this.answerAnalytics.questionStats.map(
-      (question, index) => {
-        const accuracy =
-          question.totalAnswers > 0
-            ? ((question.correctAnswers / question.totalAnswers) * 100).toFixed(
-                2,
-              )
-            : "0.00";
-        const avgTime = question.averageResponseTime.toFixed(2);
+    const questionHeaders = ["Вопрос", "Ответов", "Правильных", "Процент", "Среднее время (сек)"];
+    const questionRows = this.answerAnalytics.questionStats.map((question, index) => {
+      const accuracy =
+        question.totalAnswers > 0
+          ? ((question.correctAnswers / question.totalAnswers) * 100).toFixed(2)
+          : "0.00";
+      const avgTime = question.averageResponseTime.toFixed(2);
 
-        return [
-          `"${question.question.replace(/"/g, '""')}"`,
-          question.totalAnswers,
-          question.correctAnswers,
-          `${accuracy}%`,
-          avgTime,
-        ].join(",");
-      },
-    );
+      return [
+        `"${question.question.replace(/"/g, '""')}"`,
+        question.totalAnswers,
+        question.correctAnswers,
+        `${accuracy}%`,
+        avgTime,
+      ].join(",");
+    });
 
     // Формируем итоговый CSV
     const csv = [
@@ -413,9 +438,7 @@ class GameService {
       "",
       "=== ДЕТАЛИ ПО ВРЕМЕНИ ОТВЕТОВ ===",
       "Время ответа (сек)",
-      ...this.answerAnalytics.responseTimeDistribution.map((time) =>
-        time.toFixed(2),
-      ),
+      ...this.answerAnalytics.responseTimeDistribution.map((time) => time.toFixed(2)),
     ].join("\n");
 
     return csv;
@@ -447,8 +470,7 @@ class GameService {
     const rows = players.map((nickname) => {
       const totalAnswers = this.answerAnalytics.responseTimeDistribution.length;
       const correctAnswers = this.answerAnalytics.correctAnswers;
-      const accuracy =
-        totalAnswers > 0 ? (correctAnswers / totalAnswers) * 100 : 0;
+      const accuracy = totalAnswers > 0 ? (correctAnswers / totalAnswers) * 100 : 0;
       const avgResponseTime = this.answerAnalytics.averageResponseTime;
 
       return [
@@ -466,29 +488,19 @@ class GameService {
     XLSX.utils.book_append_sheet(workbook, generalSheet, "Общая статистика");
 
     // 2. Статистика по вопросам
-    const questionHeaders = [
-      "Вопрос",
-      "Ответов",
-      "Правильных",
-      "Процент",
-      "Среднее время (сек)",
-    ];
+    const questionHeaders = ["Вопрос", "Ответов", "Правильных", "Процент", "Среднее время (сек)"];
 
-    const questionRows = this.answerAnalytics.questionStats.map(
-      (question, index) => {
-        const accuracy =
-          question.totalAnswers > 0
-            ? (question.correctAnswers / question.totalAnswers) * 100
-            : 0;
-        return [
-          question.question,
-          question.totalAnswers,
-          question.correctAnswers,
-          accuracy,
-          question.averageResponseTime,
-        ];
-      },
-    );
+    const questionRows = this.answerAnalytics.questionStats.map((question, index) => {
+      const accuracy =
+        question.totalAnswers > 0 ? (question.correctAnswers / question.totalAnswers) * 100 : 0;
+      return [
+        question.question,
+        question.totalAnswers,
+        question.correctAnswers,
+        accuracy,
+        question.averageResponseTime,
+      ];
+    });
 
     const questionData = [questionHeaders, ...questionRows];
     const questionSheet = XLSX.utils.aoa_to_sheet(questionData);
@@ -496,9 +508,7 @@ class GameService {
 
     // 3. Детали по времени ответов
     const timeHeaders = ["Время ответа (сек)"];
-    const timeRows = this.answerAnalytics.responseTimeDistribution.map(
-      (time) => [time],
-    );
+    const timeRows = this.answerAnalytics.responseTimeDistribution.map((time) => [time]);
     const timeData = [timeHeaders, ...timeRows];
     const timeSheet = XLSX.utils.aoa_to_sheet(timeData);
     XLSX.utils.book_append_sheet(workbook, timeSheet, "Время ответов");

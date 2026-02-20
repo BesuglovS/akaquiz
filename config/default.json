@@ -55,7 +55,7 @@
     ]
   },
   "security": {
-    "hostPassword": "rty6tedde",
+    "hostPassword": "",
     "maxLoginAttempts": 3,
     "sessionTimeout": 3600000
   },

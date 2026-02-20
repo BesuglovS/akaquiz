@@ -1,14 +1,22 @@
-const fs = require("fs");
+const fs = require("fs").promises;
 const path = require("path");
+
+// Кэш загруженных квизов
+const quizCache = new Map();
 
 /**
  * Парсит текстовый файл с вопросами и возвращает массив вопросов
  * @param {string} fileName - имя файла в папке quizzes
- * @returns {Array} массив вопросов с вариантами ответов
+ * @returns {Promise<Array>} массив вопросов с вариантами ответов
  */
-function loadQuizFile(fileName) {
+async function loadQuizFile(fileName) {
+  // Проверяем кэш
+  if (quizCache.has(fileName)) {
+    return quizCache.get(fileName);
+  }
+
   const filePath = path.join(__dirname, "../../quizzes", fileName);
-  const content = fs.readFileSync(filePath, "utf-8").replace(/\r\n/g, "\n");
+  const content = (await fs.readFile(filePath, "utf-8")).replace(/\r\n/g, "\n");
   const blocks = content.split("\n\n").filter((block) => block.trim() !== "");
 
   // Вспомогательная функция: извлекает текст и первое изображение из строки
@@ -32,13 +40,12 @@ function loadQuizFile(fileName) {
     };
   }
 
-  return blocks.map((block) => {
+  const quizData = blocks.map((block) => {
     const lines = block.split("\n");
 
     // --- Вопрос ---
-    let questionLine = "";
-    let questionImg = null;
     let questionText = "";
+    let questionImg = null;
 
     const questionLineFull = lines.find((line) =>
       line.trim().startsWith("Вопрос:"),
@@ -90,6 +97,117 @@ function loadQuizFile(fileName) {
       correct: correct,
     };
   });
+
+  // Сохраняем в кэш
+  quizCache.set(fileName, quizData);
+
+  return quizData;
+}
+
+/**
+ * Синхронная версия для обратной совместимости
+ * @param {string} fileName - имя файла в папке quizzes
+ * @returns {Array} массив вопросов с вариантами ответов
+ */
+function loadQuizFileSync(fileName) {
+  // Проверяем кэш
+  if (quizCache.has(fileName)) {
+    return quizCache.get(fileName);
+  }
+
+  const fsSync = require("fs");
+  const filePath = path.join(__dirname, "../../quizzes", fileName);
+  const content = fsSync.readFileSync(filePath, "utf-8").replace(/\r\n/g, "\n");
+  const blocks = content.split("\n\n").filter((block) => block.trim() !== "");
+
+  // Вспомогательная функция: извлекает текст и первое изображение из строки
+  function parseContent(text) {
+    const imgMatch = text.match(/\[img:(.*?)\]/);
+    let imgSrc = null;
+    let cleanText = text;
+
+    if (imgMatch) {
+      imgSrc = imgMatch[1].trim();
+      if (!imgSrc.startsWith("http") && !imgSrc.startsWith("https")) {
+        imgSrc = "/media/" + imgSrc;
+      }
+      cleanText = text.replace(/\[img:.*?\]/g, "").trim();
+    }
+
+    return {
+      text: cleanText,
+      img: imgSrc,
+    };
+  }
+
+  const quizData = blocks.map((block) => {
+    const lines = block.split("\n");
+
+    let questionText = "";
+    let questionImg = null;
+
+    const questionLineFull = lines.find((line) =>
+      line.trim().startsWith("Вопрос:"),
+    );
+    if (questionLineFull) {
+      const afterPrefix = questionLineFull.trim().substring("Вопрос:".length);
+      const parsedQ = parseContent(afterPrefix);
+      questionText = parsedQ.text;
+      questionImg = parsedQ.img;
+    }
+
+    const options = [];
+    const optionsStartIndex = lines.findIndex(
+      (line) => line.trim() === "Варианты:",
+    );
+    if (optionsStartIndex !== -1) {
+      for (let i = optionsStartIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trimEnd();
+        if (line.trim().startsWith("Ответ:")) break;
+
+        const rawOptionLine = lines[i].endsWith("\n") ? lines[i] : lines[i];
+        const parsedOpt = parseContent(rawOptionLine);
+        options.push({
+          text: parsedOpt.text,
+          img: parsedOpt.img,
+        });
+      }
+    }
+
+    let correct = -1;
+    const answerLine = lines.find((line) => line.trim().startsWith("Ответ:"));
+    if (answerLine) {
+      const answerNum = parseInt(
+        answerLine.trim().substring("Ответ:".length).trim(),
+        10,
+      );
+      correct = isNaN(answerNum) ? -1 : answerNum - 1;
+    }
+
+    return {
+      question: questionText,
+      questionImg: questionImg,
+      options: options,
+      correct: correct,
+    };
+  });
+
+  // Сохраняем в кэш
+  quizCache.set(fileName, quizData);
+
+  return quizData;
+}
+
+/**
+ * Очищает кэш квизов
+ * @param {string} [fileName] - имя файла для очистки (если не указан, очищает весь кэш)
+ */
+function clearCache(fileName) {
+  if (fileName) {
+    quizCache.delete(fileName);
+  } else {
+    quizCache.clear();
+  }
 }
 
 /**
@@ -107,6 +225,9 @@ function shuffleArray(array) {
 }
 
 module.exports = {
-  loadQuizFile,
+  loadQuizFile: loadQuizFileSync, // Для обратной совместимости
+  loadQuizFileAsync: loadQuizFile,
+  loadQuizFileSync,
   shuffleArray,
+  clearCache,
 };
