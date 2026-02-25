@@ -1,12 +1,15 @@
 const fs = require("fs");
 const path = require("path");
-const { loadQuizFile, shuffleArray } = require("../../../src/utils/quizParser");
+const { loadQuizFile, shuffleArray, clearCache } = require("../../../src/utils/quizParser");
 
 describe("quizParser", () => {
   const testQuizFile = path.join(__dirname, "../../../quizzes/example.txt");
 
   describe("loadQuizFile", () => {
     beforeEach(() => {
+      // Clear cache to ensure fresh file reads
+      clearCache("example.txt");
+
       // Ensure the test file exists
       if (!fs.existsSync(testQuizFile)) {
         fs.writeFileSync(
@@ -25,6 +28,8 @@ Option 2
       if (fs.existsSync(testQuizFile)) {
         fs.unlinkSync(testQuizFile);
       }
+      // Clear cache after each test
+      clearCache("example.txt");
     });
 
     test("should load quiz file successfully", () => {
@@ -144,9 +149,7 @@ No proper structure`;
       const shuffled = shuffleArray(original);
 
       // With a large enough array, it's extremely unlikely to be in the same order
-      const isSameOrder = shuffled.every(
-        (item, index) => item === original[index],
-      );
+      const isSameOrder = shuffled.every((item, index) => item === original[index]);
       expect(isSameOrder).toBe(false);
     });
 

@@ -1,468 +1,409 @@
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const express = require("express");
+const ioClient = require("socket.io-client");
 const setupSocketRoutes = require("../../src/routes/socketRoutes");
 const gameService = require("../../src/services/gameService");
-
-// Mock socket.io-client to prevent actual connections
-jest.mock("socket.io-client", () => {
-  return jest.fn(() => ({
-    emit: jest.fn(),
-    on: jest.fn(),
-    disconnect: jest.fn(),
-  }));
-});
 
 describe("End-to-End Game Flow", () => {
   let server;
   let io;
-  let clientSocket;
+  let serverPort;
   let hostSocket;
-  let app;
+  let playerSocket;
+
+  // Helper function to create a socket connection
+  const createSocket = (options = {}) => {
+    return ioClient(`http://localhost:${serverPort}`, {
+      transports: ["websocket"],
+      forceNew: true,
+      ...options,
+    });
+  };
+
+  // Helper to wait for an event
+  const waitForEvent = (socket, event, timeout = 5000) => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`Timeout waiting for event: ${event}`));
+      }, timeout);
+
+      socket.once(event, (data) => {
+        clearTimeout(timer);
+        resolve(data);
+      });
+    });
+  };
 
   beforeAll((done) => {
-    // Setup Express server
-    app = express();
+    const app = express();
     server = createServer(app);
-    io = new Server(server);
+    io = new Server(server, {
+      cors: {
+        origin: "*",
+        methods: ["GET", "POST"],
+      },
+    });
 
-    // Setup routes
     setupSocketRoutes(io);
 
     server.listen(() => {
-      const port = server.address().port;
-      const clientUrl = `http://localhost:${port}`;
-
-      // Create client connections
-      const ioClient = require("socket.io-client");
-      clientSocket = ioClient(clientUrl);
-      hostSocket = ioClient(clientUrl);
-
+      serverPort = server.address().port;
       done();
     });
   });
 
   afterAll((done) => {
-    clientSocket.disconnect();
-    hostSocket.disconnect();
-    server.close(done);
+    // Close all connections
+    if (hostSocket && hostSocket.connected) {
+      hostSocket.disconnect();
+    }
+    if (playerSocket && playerSocket.connected) {
+      playerSocket.disconnect();
+    }
+
+    // Check if server is still running before closing
+    if (io && !io.sockets.sockets.size) {
+      io.close();
+    }
+
+    if (server && server.listening) {
+      server.close(done);
+    } else {
+      done();
+    }
   });
 
   beforeEach(() => {
-    // Reset game state
+    // Reset game state before each test
     gameService.resetGame();
   });
 
+  afterEach(() => {
+    // Clean up sockets after each test
+    if (hostSocket && hostSocket.connected) {
+      hostSocket.disconnect();
+    }
+    if (playerSocket && playerSocket.connected) {
+      playerSocket.disconnect();
+    }
+  });
+
   describe("Complete Game Session", () => {
-    test("should complete full game flow from host authentication to quiz finish", (done) => {
-      // Set longer timeout for this test
-      jest.setTimeout(15000);
-      let hostAuthenticated = false;
-      let quizLoaded = false;
-      let playerJoined = false;
-      let questionStarted = false;
-      let answerSubmitted = false;
-      let gameFinished = false;
+    test("should complete full game flow from host authentication to quiz finish", async () => {
+      // Create sockets
+      hostSocket = createSocket();
+      playerSocket = createSocket();
 
-      // Host authentication
-      hostSocket.emit(
-        "authenticateHost",
-        process.env.HOST_PASSWORD || "rty6tedde",
-      );
+      // Wait for connections
+      await Promise.all([
+        waitForEvent(hostSocket, "connect"),
+        waitForEvent(playerSocket, "connect"),
+      ]);
 
-      hostSocket.on("hostAuthResult", (result) => {
-        expect(result.success).toBe(true);
-        hostAuthenticated = true;
+      // Step 1: Host authentication
+      hostSocket.emit("authenticateHost", process.env.HOST_PASSWORD);
+      const authResult = await waitForEvent(hostSocket, "hostAuthResult");
+      expect(authResult.success).toBe(true);
+
+      // Step 2: Get quiz list
+      hostSocket.emit("getQuizList");
+      const quizList = await waitForEvent(hostSocket, "quizList");
+      expect(Array.isArray(quizList)).toBe(true);
+      expect(quizList.length).toBeGreaterThan(0);
+
+      // Step 3: Select quiz
+      hostSocket.emit("selectQuiz", {
+        fileName: quizList[0],
+        shuffle: false,
+        questionCount: 2,
       });
+      const quizReady = await waitForEvent(hostSocket, "quizReady");
+      expect(quizReady).toBeDefined();
 
-      // Host loads quiz
-      setTimeout(() => {
-        hostSocket.emit("getQuizList");
-      }, 100);
+      // Step 4: Player joins
+      playerSocket.emit("join", "test-player");
+      const playerList = await waitForEvent(playerSocket, "playerListUpdate");
+      expect(playerList).toContain("test-player");
 
-      hostSocket.on("quizList", (files) => {
-        expect(Array.isArray(files)).toBe(true);
-        expect(files.length).toBeGreaterThan(0);
+      // Step 5: Start first question
+      hostSocket.emit("nextQuestion");
+      const question1 = await waitForEvent(playerSocket, "updateQuestion");
+      expect(question1).toBeDefined();
+      expect(question1.question).toBeDefined();
+      expect(question1.options).toBeDefined();
 
-        hostSocket.emit("selectQuiz", {
-          fileName: files[0],
-          shuffle: false,
-          questionCount: 2,
-        });
-      });
+      // Step 6: Player submits answer
+      playerSocket.emit("submitAnswer", 0);
+      const timeOver = await waitForEvent(playerSocket, "timeOver");
+      expect(timeOver.scores).toBeDefined();
+      expect(timeOver.correctAnswer).toBeDefined();
 
-      hostSocket.on("quizReady", (fileName) => {
-        expect(fileName).toBeDefined();
-        quizLoaded = true;
-      });
+      // Step 7: Start second question
+      hostSocket.emit("nextQuestion");
+      await waitForEvent(playerSocket, "updateQuestion");
 
-      // Player joins
-      setTimeout(() => {
-        clientSocket.emit("join", "test-player");
-      }, 200);
+      // Step 8: Submit answer and finish
+      playerSocket.emit("submitAnswer", 0);
+      await waitForEvent(playerSocket, "timeOver");
 
-      clientSocket.on("joinError", (error) => {
-        // Should not happen in successful flow
-        expect(error).toBeUndefined();
-      });
+      // Step 9: Try to get next question - should finish quiz
+      hostSocket.emit("nextQuestion");
+      const quizFinished = await waitForEvent(hostSocket, "quizFinished");
+      expect(quizFinished).toBeDefined();
+    });
 
-      clientSocket.on("playerListUpdate", (players) => {
-        expect(players).toContain("test-player");
-        playerJoined = true;
-      });
-
-      // Start game
-      setTimeout(() => {
-        hostSocket.emit("nextQuestion");
-      }, 300);
-
-      hostSocket.on("updateQuestion", (question) => {
-        expect(question).toBeDefined();
-        expect(question.question).toBeDefined();
-        expect(question.options).toBeDefined();
-        expect(question.timeLeft).toBeDefined();
-        questionStarted = true;
-      });
-
-      // Player submits answer
-      clientSocket.on("updateQuestion", (question) => {
-        // Wait a moment for timer to start, then submit answer
-        setTimeout(() => {
-          clientSocket.emit("submitAnswer", 0); // Submit first option
-        }, 100);
-      });
-
-      clientSocket.on("timeOver", (data) => {
-        expect(data.scores).toBeDefined();
-        expect(data.correctAnswer).toBeDefined();
-        answerSubmitted = true;
-      });
-
-      // Continue to next question and finish
-      setTimeout(() => {
-        hostSocket.emit("nextQuestion");
-      }, 500);
-
-      setTimeout(() => {
-        hostSocket.emit("nextQuestion"); // This should trigger quizFinished
-      }, 700);
-
-      hostSocket.on("quizFinished", (scores) => {
-        expect(scores).toBeDefined();
-        gameFinished = true;
-
-        // Verify all steps completed
-        expect(hostAuthenticated).toBe(true);
-        expect(quizLoaded).toBe(true);
-        expect(playerJoined).toBe(true);
-        expect(questionStarted).toBe(true);
-        expect(answerSubmitted).toBe(true);
-        expect(gameFinished).toBe(true);
-
-        done();
-      });
-    }, 10000);
-
-    test("should handle multiple players correctly", (done) => {
-      // Set longer timeout for this test
-      jest.setTimeout(20000);
-      const players = ["player1", "player2", "player3"];
-      let connectedPlayers = 0;
-      let allPlayersJoined = false;
-      let allAnswersSubmitted = 0;
+    test("should handle multiple players correctly", async () => {
+      // Create host socket
+      hostSocket = createSocket();
+      await waitForEvent(hostSocket, "connect");
 
       // Authenticate host
-      hostSocket.emit(
-        "authenticateHost",
-        process.env.HOST_PASSWORD || "rty6tedde",
+      hostSocket.emit("authenticateHost", process.env.HOST_PASSWORD);
+      const authResult = await waitForEvent(hostSocket, "hostAuthResult");
+      expect(authResult.success).toBe(true);
+
+      // Load quiz
+      hostSocket.emit("getQuizList");
+      const quizList = await waitForEvent(hostSocket, "quizList");
+      hostSocket.emit("selectQuiz", {
+        fileName: quizList[0],
+        shuffle: false,
+        questionCount: 1,
+      });
+      await waitForEvent(hostSocket, "quizReady");
+
+      // Create multiple players
+      const players = ["player1", "player2", "player3"];
+      const playerSockets = [];
+
+      for (const playerName of players) {
+        const socket = createSocket();
+        await waitForEvent(socket, "connect");
+        socket.emit("join", playerName);
+        playerSockets.push(socket);
+      }
+
+      // Wait for all players to receive player list update
+      const joinPromises = playerSockets.map((socket) =>
+        waitForEvent(socket, "playerListUpdate", 3000),
       );
+      const playerLists = await Promise.all(joinPromises);
 
-      hostSocket.on("hostAuthResult", (result) => {
-        if (result.success) {
-          // Load quiz
-          hostSocket.emit("getQuizList");
+      // Verify all players are in the list
+      for (const list of playerLists) {
+        for (const playerName of players) {
+          expect(list).toContain(playerName);
         }
+      }
+
+      // Start game
+      hostSocket.emit("nextQuestion");
+      await Promise.all(playerSockets.map((socket) => waitForEvent(socket, "updateQuestion")));
+
+      // All players submit answers
+      for (const socket of playerSockets) {
+        socket.emit("submitAnswer", 0);
+      }
+
+      // Wait for time over for all players
+      await Promise.all(playerSockets.map((socket) => waitForEvent(socket, "timeOver")));
+
+      // Get analytics
+      hostSocket.emit("getAnalytics");
+      const analytics = await waitForEvent(hostSocket, "analyticsData");
+      expect(analytics).toBeDefined();
+      expect(analytics.totalAnswers).toBe(players.length);
+
+      // Cleanup
+      for (const socket of playerSockets) {
+        socket.disconnect();
+      }
+    });
+
+    test("should handle quiz with images correctly", async () => {
+      // Create sockets
+      hostSocket = createSocket();
+      playerSocket = createSocket();
+
+      await Promise.all([
+        waitForEvent(hostSocket, "connect"),
+        waitForEvent(playerSocket, "connect"),
+      ]);
+
+      // Authenticate host
+      hostSocket.emit("authenticateHost", process.env.HOST_PASSWORD);
+      const authResult = await waitForEvent(hostSocket, "hostAuthResult");
+      expect(authResult.success).toBe(true);
+
+      // Get quiz list and find one with images
+      hostSocket.emit("getQuizList");
+      const quizList = await waitForEvent(hostSocket, "quizList");
+      const quizFile = quizList.find((f) => f.includes("foto")) || quizList[0];
+
+      // Select quiz
+      hostSocket.emit("selectQuiz", {
+        fileName: quizFile,
+        shuffle: false,
+        questionCount: 1,
+      });
+      await waitForEvent(hostSocket, "quizReady");
+
+      // Player joins
+      playerSocket.emit("join", "test-player");
+      await waitForEvent(playerSocket, "playerListUpdate");
+
+      // Start question
+      hostSocket.emit("nextQuestion");
+      const question = await waitForEvent(playerSocket, "updateQuestion");
+
+      // Verify question structure
+      expect(question.question).toBeDefined();
+      expect(question.options).toBeDefined();
+      expect(Array.isArray(question.options)).toBe(true);
+      expect(question.options.length).toBeGreaterThan(0);
+
+      // Verify option structure
+      question.options.forEach((option) => {
+        expect(typeof option.text).toBe("string");
+        expect(option.img === null || typeof option.img === "string").toBe(true);
       });
 
-      hostSocket.on("quizList", (files) => {
-        hostSocket.emit("selectQuiz", {
-          fileName: files[0],
-          shuffle: false,
-          questionCount: 1,
-        });
+      // Submit answer
+      playerSocket.emit("submitAnswer", 0);
+      await waitForEvent(playerSocket, "timeOver");
+
+      // Get analytics
+      hostSocket.emit("getAnalytics");
+      const analytics = await waitForEvent(hostSocket, "analyticsData");
+      expect(analytics).toBeDefined();
+    });
+
+    test("should handle game reset correctly", async () => {
+      // Create sockets
+      hostSocket = createSocket();
+      playerSocket = createSocket();
+
+      await Promise.all([
+        waitForEvent(hostSocket, "connect"),
+        waitForEvent(playerSocket, "connect"),
+      ]);
+
+      // Authenticate host
+      hostSocket.emit("authenticateHost", process.env.HOST_PASSWORD);
+      await waitForEvent(hostSocket, "hostAuthResult");
+
+      // Load quiz
+      hostSocket.emit("getQuizList");
+      const quizList = await waitForEvent(hostSocket, "quizList");
+      hostSocket.emit("selectQuiz", {
+        fileName: quizList[0],
+        shuffle: false,
+        questionCount: 1,
       });
+      await waitForEvent(hostSocket, "quizReady");
 
-      hostSocket.on("quizReady", () => {
-        // Join all players
-        players.forEach((playerName) => {
-          const playerSocket = require("socket.io-client")(
-            `http://localhost:${server.address().port}`,
-          );
+      // Player joins
+      playerSocket.emit("join", "reset-test-player");
+      await waitForEvent(playerSocket, "playerListUpdate");
 
-          playerSocket.emit("join", playerName);
+      // Start and answer question
+      hostSocket.emit("nextQuestion");
+      await waitForEvent(playerSocket, "updateQuestion");
+      playerSocket.emit("submitAnswer", 0);
+      await waitForEvent(playerSocket, "timeOver");
 
-          playerSocket.on("playerListUpdate", (playerList) => {
-            if (playerList.includes(playerName)) {
-              connectedPlayers++;
-              if (connectedPlayers === players.length) {
-                allPlayersJoined = true;
+      // Reset game
+      hostSocket.emit("resetGame");
+      await waitForEvent(hostSocket, "gameReset");
 
-                // Start game when all players joined
-                setTimeout(() => {
-                  hostSocket.emit("nextQuestion");
-                }, 100);
-              }
-            }
-          });
-
-          playerSocket.on("updateQuestion", (question) => {
-            // Submit answer
-            setTimeout(() => {
-              playerSocket.emit("submitAnswer", 0);
-            }, 50);
-          });
-
-          playerSocket.on("timeOver", () => {
-            allAnswersSubmitted++;
-
-            if (allAnswersSubmitted === players.length) {
-              // Verify leaderboard
-              hostSocket.emit("getAnalytics");
-            }
-          });
-        });
-      });
-
-      hostSocket.on("analyticsData", (analytics) => {
-        expect(analytics).toBeDefined();
-        expect(analytics.totalAnswers).toBe(players.length);
-
-        done();
-      });
-    }, 15000);
-
-    test("should handle quiz with images correctly", (done) => {
-      // Set longer timeout for this test
-      jest.setTimeout(15000);
-      // This test verifies that questions and options with images are handled properly
-      hostSocket.emit(
-        "authenticateHost",
-        process.env.HOST_PASSWORD || "rty6tedde",
-      );
-
-      hostSocket.on("hostAuthResult", (result) => {
-        if (result.success) {
-          hostSocket.emit("getQuizList");
-        }
-      });
-
-      hostSocket.on("quizList", (files) => {
-        // Try to find a quiz with images or use any available
-        const quizFile = files.find((f) => f.includes("foto")) || files[0];
-
-        hostSocket.emit("selectQuiz", {
-          fileName: quizFile,
-          shuffle: false,
-          questionCount: 1,
-        });
-      });
-
-      hostSocket.on("quizReady", () => {
-        hostSocket.emit("nextQuestion");
-      });
-
-      hostSocket.on("updateQuestion", (question) => {
-        // Verify question structure
-        expect(question.question).toBeDefined();
-        expect(question.options).toBeDefined();
-        expect(Array.isArray(question.options)).toBe(true);
-
-        // Check if question or options have images
-        const hasQuestionImage = question.questionImg !== null;
-        const hasOptionImages = question.options.some(
-          (opt) => opt.img !== null,
-        );
-
-        // At minimum, verify the structure is correct
-        expect(question.options.length).toBeGreaterThan(0);
-        question.options.forEach((option) => {
-          expect(typeof option.text).toBe("string");
-          expect(option.img === null || typeof option.img === "string").toBe(
-            true,
-          );
-        });
-
-        // Submit answer to proceed
-        setTimeout(() => {
-          clientSocket.emit("submitAnswer", 0);
-        }, 100);
-      });
-
-      clientSocket.on("timeOver", () => {
-        // Verify scores are updated
-        hostSocket.emit("getAnalytics");
-      });
-
-      hostSocket.on("analyticsData", (analytics) => {
-        expect(analytics).toBeDefined();
-        expect(analytics.totalAnswers).toBeGreaterThan(0);
-
-        done();
-      });
-    }, 10000);
-
-    test("should handle game reset correctly", (done) => {
-      // Set longer timeout for this test
-      jest.setTimeout(10000);
-      let gameReset = false;
-
-      // Complete a small game session
-      hostSocket.emit(
-        "authenticateHost",
-        process.env.HOST_PASSWORD || "rty6tedde",
-      );
-
-      hostSocket.on("hostAuthResult", (result) => {
-        if (result.success) {
-          hostSocket.emit("getQuizList");
-        }
-      });
-
-      hostSocket.on("quizList", (files) => {
-        hostSocket.emit("selectQuiz", {
-          fileName: files[0],
-          shuffle: false,
-          questionCount: 1,
-        });
-      });
-
-      hostSocket.on("quizReady", () => {
-        clientSocket.emit("join", "reset-test-player");
-      });
-
-      clientSocket.on("playerListUpdate", () => {
-        hostSocket.emit("nextQuestion");
-      });
-
-      hostSocket.on("updateQuestion", (question) => {
-        setTimeout(() => {
-          clientSocket.emit("submitAnswer", 0);
-        }, 50);
-      });
-
-      clientSocket.on("timeOver", () => {
-        // Reset game
-        hostSocket.emit("resetGame");
-      });
-
-      hostSocket.on("gameReset", () => {
-        gameReset = true;
-
-        // Verify game state is reset
-        expect(gameService.currentQuestionIndex).toBe(-1);
-        expect(gameService.quizData).toEqual([]);
-        expect(gameService.scores).toEqual({});
-
-        done();
-      });
-    }, 8000);
+      // Verify game state is reset
+      expect(gameService.currentQuestionIndex).toBe(-1);
+      expect(gameService.quizData).toEqual([]);
+      expect(gameService.scores).toEqual({});
+    });
   });
 
   describe("Error Handling", () => {
-    test("should handle invalid host password", (done) => {
-      // Set timeout for this test
-      jest.setTimeout(15000);
+    test("should handle invalid host password", async () => {
+      hostSocket = createSocket();
+      await waitForEvent(hostSocket, "connect");
+
       hostSocket.emit("authenticateHost", "wrong-password");
+      const result = await waitForEvent(hostSocket, "hostAuthResult");
 
-      hostSocket.on("hostAuthResult", (result) => {
-        expect(result.success).toBe(false);
-        expect(result.reason).toBe("wrong_password");
-        done();
-      });
+      expect(result.success).toBe(false);
+      expect(result.reason).toBe("wrong_password");
     });
 
-    test("should handle duplicate host connection", (done) => {
-      // Set timeout for this test
-      jest.setTimeout(15000);
+    test("should handle duplicate host connection", async () => {
       // First host connects
-      hostSocket.emit(
-        "authenticateHost",
-        process.env.HOST_PASSWORD || "rty6tedde",
-      );
+      hostSocket = createSocket();
+      await waitForEvent(hostSocket, "connect");
 
-      hostSocket.on("hostAuthResult", (result) => {
-        if (result.success) {
-          // Try to connect another host
-          const anotherHostSocket = require("socket.io-client")(
-            `http://localhost:${server.address().port}`,
-          );
+      hostSocket.emit("authenticateHost", process.env.HOST_PASSWORD);
+      const firstResult = await waitForEvent(hostSocket, "hostAuthResult");
+      expect(firstResult.success).toBe(true);
 
-          anotherHostSocket.emit(
-            "authenticateHost",
-            process.env.HOST_PASSWORD || "rty6tedde",
-          );
+      // Second host tries to connect
+      const secondHostSocket = createSocket();
+      await waitForEvent(secondHostSocket, "connect");
 
-          anotherHostSocket.on("hostAuthResult", (result) => {
-            expect(result.success).toBe(false);
-            expect(result.reason).toBe("already_host");
-            done();
-          });
-        }
-      });
+      secondHostSocket.emit("authenticateHost", process.env.HOST_PASSWORD);
+      const secondResult = await waitForEvent(secondHostSocket, "hostAuthResult");
+
+      expect(secondResult.success).toBe(false);
+      expect(secondResult.reason).toBe("already_host");
+
+      secondHostSocket.disconnect();
     });
 
-    test("should handle invalid quiz file", (done) => {
-      // Set timeout for this test
-      jest.setTimeout(15000);
-      hostSocket.emit(
-        "authenticateHost",
-        process.env.HOST_PASSWORD || "rty6tedde",
-      );
+    test("should handle invalid quiz file", async () => {
+      hostSocket = createSocket();
+      await waitForEvent(hostSocket, "connect");
 
-      hostSocket.on("hostAuthResult", (result) => {
-        if (result.success) {
-          hostSocket.emit("selectQuiz", {
-            fileName: "non-existent.txt",
-            shuffle: false,
-            questionCount: null,
-          });
-        }
+      // Authenticate
+      hostSocket.emit("authenticateHost", process.env.HOST_PASSWORD);
+      await waitForEvent(hostSocket, "hostAuthResult");
+
+      // Try to load non-existent quiz
+      hostSocket.emit("selectQuiz", {
+        fileName: "non-existent.txt",
+        shuffle: false,
+        questionCount: null,
       });
 
-      hostSocket.on("quizError", (error) => {
-        expect(error.message).toBeDefined();
-        done();
-      });
+      const error = await waitForEvent(hostSocket, "quizError");
+      expect(error.message).toBeDefined();
     });
 
-    test("should handle player with duplicate nickname", (done) => {
-      // Set timeout for this test
-      jest.setTimeout(15000);
-      hostSocket.emit(
-        "authenticateHost",
-        process.env.HOST_PASSWORD || "rty6tedde",
-      );
+    test("should handle player with duplicate nickname", async () => {
+      hostSocket = createSocket();
+      playerSocket = createSocket();
 
-      hostSocket.on("hostAuthResult", (result) => {
-        if (result.success) {
-          // First player joins
-          clientSocket.emit("join", "duplicate-name");
-        }
-      });
+      await Promise.all([
+        waitForEvent(hostSocket, "connect"),
+        waitForEvent(playerSocket, "connect"),
+      ]);
 
-      clientSocket.on("playerListUpdate", () => {
-        // Second player tries to join with same name
-        const anotherPlayerSocket = require("socket.io-client")(
-          `http://localhost:${server.address().port}`,
-        );
+      // Authenticate host
+      hostSocket.emit("authenticateHost", process.env.HOST_PASSWORD);
+      await waitForEvent(hostSocket, "hostAuthResult");
 
-        anotherPlayerSocket.emit("join", "duplicate-name");
+      // First player joins
+      playerSocket.emit("join", "duplicate-name");
+      await waitForEvent(playerSocket, "playerListUpdate");
 
-        anotherPlayerSocket.on("joinError", (error) => {
-          expect(error).toContain("уже занят");
-          done();
-        });
-      });
+      // Second player tries same name
+      const secondPlayerSocket = createSocket();
+      await waitForEvent(secondPlayerSocket, "connect");
+
+      secondPlayerSocket.emit("join", "duplicate-name");
+      const error = await waitForEvent(secondPlayerSocket, "joinError");
+
+      expect(error).toContain("уже занят");
+
+      secondPlayerSocket.disconnect();
     });
   });
 });

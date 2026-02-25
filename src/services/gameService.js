@@ -173,7 +173,14 @@ class GameService {
     this.currentQuestionIndex = -1;
     this.scores = {};
     this.quizData = [];
+    this.votes = {};
+    this.answeredUsers = new Set();
     this.isQuestionActive = false;
+    this.questionStartTime = 0;
+    this.customTimeLimit = null;
+    this.isPaused = false;
+    this.pauseStartTime = 0;
+    this.totalPausedTime = 0;
     this.answerAnalytics = {
       totalAnswers: 0,
       correctAnswers: 0,
@@ -206,6 +213,12 @@ class GameService {
     // Проверяем, уже ли ответил пользователь
     if (this.answeredUsers.has(nickname)) {
       return { success: false, reason: "already_answered" };
+    }
+
+    // Проверяем, не истекло ли время
+    const TIME_LIMIT = this.customTimeLimit || config.game.timeLimit;
+    if (timeElapsed > TIME_LIMIT) {
+      return { success: false, reason: "time_expired" };
     }
 
     // --- СБОР АНАЛИТИКИ ОТВЕТОВ ---

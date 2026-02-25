@@ -1,5 +1,5 @@
 const gameService = require("../../../src/services/gameService");
-const { loadQuizFile } = require("../../../src/utils/quizParser");
+const { loadQuizFile, shuffleArray } = require("../../../src/utils/quizParser");
 
 // Mock the quiz parser
 jest.mock("../../../src/utils/quizParser");
@@ -38,6 +38,7 @@ describe("GameService", () => {
   describe("loadQuiz", () => {
     test("should load quiz successfully", () => {
       loadQuizFile.mockReturnValue(mockQuizData);
+      shuffleArray.mockImplementation((arr) => arr); // Return same array for non-shuffle tests
 
       const result = gameService.loadQuiz("test.txt", false, null);
 
@@ -51,16 +52,19 @@ describe("GameService", () => {
 
     test("should shuffle questions when shuffle is true", () => {
       loadQuizFile.mockReturnValue(mockQuizData);
+      shuffleArray.mockImplementation((arr) => [...arr].reverse()); // Mock shuffle
 
       const result = gameService.loadQuiz("test.txt", true, null);
 
       expect(result.success).toBe(true);
       expect(result.shuffle).toBe(true);
       expect(gameService.quizData).toHaveLength(2);
+      expect(shuffleArray).toHaveBeenCalledWith(mockQuizData);
     });
 
     test("should limit questions when questionCount is specified", () => {
       loadQuizFile.mockReturnValue(mockQuizData);
+      shuffleArray.mockImplementation((arr) => arr);
 
       const result = gameService.loadQuiz("test.txt", false, 1);
 
@@ -187,9 +191,10 @@ describe("GameService", () => {
     });
 
     test("should not process answer after time limit", () => {
-      const result = gameService.processAnswer("player1", 0, 20); // Exceeds time limit
+      const result = gameService.processAnswer("player1", 0, 20); // Exceeds time limit (15s)
 
       expect(result.success).toBe(false);
+      expect(result.reason).toBe("time_expired");
     });
   });
 

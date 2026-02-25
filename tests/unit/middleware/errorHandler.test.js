@@ -54,12 +54,9 @@ describe("errorHandler middleware", () => {
 
   describe("createError", () => {
     test("should create error with all required fields", () => {
-      const error = createError(
-        ERROR_TYPES.VALIDATION,
-        "Test error message",
-        400,
-        { field: "test" },
-      );
+      const error = createError(ERROR_TYPES.VALIDATION, "Test error message", 400, {
+        field: "test",
+      });
 
       expect(error).toEqual({
         type: ERROR_TYPES.VALIDATION,
@@ -272,8 +269,9 @@ describe("errorHandler middleware", () => {
 
       logError(error);
 
-      expect(consoleSpy.log).toHaveBeenCalledWith(
-        expect.stringContaining("[LOG]"),
+      // Default level is "error", so console.error should be called with [ERROR]
+      expect(consoleSpy.error).toHaveBeenCalledWith(
+        expect.stringContaining("[ERROR]"),
         expect.stringMatching(
           /{"level":"error","timestamp":".*","errorId":"err_[a-z0-9]+","type":"VALIDATION_ERROR","message":"Test error","details":null}/,
         ),
@@ -292,9 +290,7 @@ describe("errorHandler middleware", () => {
       initGlobalErrorHandlers();
 
       expect(consoleSpy.log).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Глобальные обработчики ошибок инициализированы",
-        ),
+        expect.stringContaining("Глобальные обработчики ошибок инициализированы"),
       );
     });
   });
