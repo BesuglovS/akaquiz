@@ -202,7 +202,8 @@ function setupSocketRoutes(io) {
     socket.on("join", (nickname) => {
       try {
         const validation = validateNickname(nickname);
-        if (!validateOrThrow(validation, socket, "nickname validation")) {
+        if (!validation.isValid) {
+          socket.emit("joinError", validation.error);
           return;
         }
 
@@ -372,6 +373,11 @@ function setupSocketRoutes(io) {
           return;
         }
 
+        // Проверяем, что игрок авторизован (имеет никнейм)
+        if (!socket.nickname) {
+          return;
+        }
+
         if (timeElapsed > config.game.timeLimit + 0.5) return; // TIME_LIMIT + погрешность
 
         // Проверяем, уже ли ответил пользователь (важно проверять до обработки)
@@ -402,6 +408,13 @@ function setupSocketRoutes(io) {
         const result = gameService.processAnswer(socket.nickname, index, timeElapsed);
 
         if (result.success) {
+          // Отправляем игроку результат его ответа
+          socket.emit("answerResult", {
+            isCorrect: result.isCorrect,
+            scoreEarned: result.scoreEarned,
+            totalScore: gameService.getAllPlayersScores()[socket.nickname] || 0,
+          });
+
           // Обновляем статистику
           io.emit("updateStats", gameService.votes);
 

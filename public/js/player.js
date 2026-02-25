@@ -12,6 +12,7 @@
   const timerBar = document.getElementById("timer-bar");
   let myNick = null;
   let mySelection = null;
+  let myLastAnswerResult = null; // Результат последнего ответа от сервера
 
   /**
    * Перемешивает массив случайным образом
@@ -102,6 +103,7 @@
       const nick = event.target.value.trim();
       if (nick) {
         myNick = nick;
+        showLoadingIndicator(true, "Подключение...");
         socket.emit("join", nick);
         loginDiv.classList.add("hidden");
         gameDiv.classList.remove("hidden");
@@ -111,6 +113,7 @@
 
   // Ошибка входа
   socket.on("joinError", (message) => {
+    showLoadingIndicator(false);
     alert("Ошибка: " + message);
     loginDiv.classList.remove("hidden");
     gameDiv.classList.add("hidden");
@@ -119,6 +122,9 @@
 
   // Обновление списка игроков
   socket.on("playerListUpdate", (players) => {
+    // Скрываем индикатор загрузки при успешном подключении
+    showLoadingIndicator(false);
+
     const status = document.getElementById("lobby-status");
     if (status) status.innerText = `Уже в лобби: ${players.length}`;
 
@@ -130,11 +136,17 @@
       .join("");
   });
 
+  // Результат ответа от сервера
+  socket.on("answerResult", (data) => {
+    myLastAnswerResult = data;
+  });
+
   // Новый вопрос
   socket.on("updateQuestion", (data) => {
     lobbyView.classList.add("hidden");
     quizView.classList.remove("hidden");
     mySelection = null;
+    myLastAnswerResult = null; // Сбрасываем результат при новом вопросе
 
     optionsList.innerHTML = "";
 
@@ -213,12 +225,17 @@
     }
 
     setTimeout(() => {
-      const isCorrect = mySelection === correctAnswer;
+      // Используем результат от сервера, если он есть
+      const isCorrect = myLastAnswerResult
+        ? myLastAnswerResult.isCorrect
+        : mySelection === correctAnswer;
+      const scoreEarned = myLastAnswerResult ? myLastAnswerResult.scoreEarned : 0;
 
       let html = `
         <div class="result-feedback ${isCorrect ? "text-success" : "text-danger"}">
           <div class="result-status-icon">${isCorrect ? "🔥" : "⏳"}</div>
           <h3>${isCorrect ? "Правильно!" : "Упс, не совсем..."}</h3>
+          ${isCorrect ? `<p class="score-earned">+${scoreEarned} баллов</p>` : ""}
           <p class="correct-answer-reveal">Правильный ответ: <strong>${correctText}</strong></p>
         </div>
         
