@@ -3,6 +3,15 @@
   "version": "1.0.0",
   "description": "Интерактивная викторина в реальном времени",
   "main": "server.js",
+  "author": "Bezuglov Sergey",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BesuglovS/akaquiz.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BesuglovS/akaquiz/issues"
+  },
+  "homepage": "https://github.com/BesuglovS/akaquiz#readme",
   "dependencies": {
     "compression": "^1.7.4",
     "dotenv": "^17.2.4",

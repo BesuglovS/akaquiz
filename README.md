@@ -197,4 +197,15 @@ node server.js
 
 ## 📄 Лицензия
 
-MIT License - см. файл LICENSE для подробностей.
+MIT License - см. файл [LICENSE](LICENSE) для подробностей.
+
+Copyright (c) 2026 Bezuglov Sergey
+
+---
+
+## 👤 Автор
+
+**Bezuglov Sergey**
+
+- GitHub: [@BesuglovS](https://github.com/BesuglovS)
+- Repository: [https://github.com/BesuglovS/akaquiz](https://github.com/BesuglovS/akaquiz)
