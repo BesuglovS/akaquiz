@@ -48,18 +48,13 @@ function generateErrorId() {
  * @param {string} context - контекст, где произошла ошибка
  */
 function handleSocketError(socket, error, context = "unknown") {
-  const errorObj = createError(
-    ERROR_TYPES.SOCKET,
-    error.message || "Произошла ошибка",
-    500,
-    {
-      context,
-      stack: error.stack,
-      socketId: socket.id,
-      nickname: socket.nickname,
-      isHost: socket.isHost,
-    },
-  );
+  const errorObj = createError(ERROR_TYPES.SOCKET, error.message || "Произошла ошибка", 500, {
+    context,
+    stack: error.stack,
+    socketId: socket.id,
+    nickname: socket.nickname,
+    isHost: socket.isHost,
+  });
 
   console.error(`[Socket Error] ${context}:`, errorObj);
 
@@ -155,15 +150,10 @@ function logError(error, level = "error") {
  * @param {Error} error - необработанная ошибка
  */
 function handleUnhandledError(error) {
-  const errorObj = createError(
-    ERROR_TYPES.INTERNAL,
-    "Необработанная ошибка",
-    500,
-    {
-      originalMessage: error.message,
-      stack: error.stack,
-    },
-  );
+  const errorObj = createError(ERROR_TYPES.INTERNAL, "Необработанная ошибка", 500, {
+    originalMessage: error.message,
+    stack: error.stack,
+  });
 
   logError(errorObj, "error");
 
@@ -178,30 +168,66 @@ function handleUnhandledError(error) {
  * @param {PromiseRejectionEvent} event - событие rejection
  */
 function handleUnhandledRejection(event) {
-  const errorObj = createError(
-    ERROR_TYPES.INTERNAL,
-    "Необработанный Promise rejection",
-    500,
-    {
-      reason: event.reason,
-      promise: event.promise,
-    },
-  );
+  const errorObj = createError(ERROR_TYPES.INTERNAL, "Необработанный Promise rejection", 500, {
+    reason: event.reason,
+    promise: event.promise,
+  });
 
   logError(errorObj, "error");
 }
+
+// Флаг для отслеживания инициализации
+let isInitialized = false;
+let boundHandleUnhandledError = null;
+let boundHandleUnhandledRejection = null;
 
 /**
  * Инициализация глобальных обработчиков ошибок
  */
 function initGlobalErrorHandlers() {
+  // Предотвращаем повторную инициализацию
+  if (isInitialized) {
+    return;
+  }
+
+  // Создаем привязанные обработчики для возможности удаления
+  boundHandleUnhandledError = handleUnhandledError;
+  boundHandleUnhandledRejection = handleUnhandledRejection;
+
   // Обработчик необработанных ошибок
-  process.on("uncaughtException", handleUnhandledError);
+  process.on("uncaughtException", boundHandleUnhandledError);
 
   // Обработчик необработанных Promise rejection
-  process.on("unhandledRejection", handleUnhandledRejection);
+  process.on("unhandledRejection", boundHandleUnhandledRejection);
 
+  isInitialized = true;
   console.log("Глобальные обработчики ошибок инициализированы");
+}
+
+/**
+ * Удаление глобальных обработчиков ошибок (для тестов)
+ */
+function cleanupGlobalErrorHandlers() {
+  if (isInitialized) {
+    if (boundHandleUnhandledError) {
+      process.removeListener("uncaughtException", boundHandleUnhandledError);
+    }
+    if (boundHandleUnhandledRejection) {
+      process.removeListener("unhandledRejection", boundHandleUnhandledRejection);
+    }
+    isInitialized = false;
+    boundHandleUnhandledError = null;
+    boundHandleUnhandledRejection = null;
+  }
+}
+
+/**
+ * Сброс флага инициализации (только для тестов)
+ */
+function resetInitialization() {
+  isInitialized = false;
+  boundHandleUnhandledError = null;
+  boundHandleUnhandledRejection = null;
 }
 
 /**
@@ -246,5 +272,9 @@ module.exports = {
   asyncErrorHandler,
   logError,
   initGlobalErrorHandlers,
+  cleanupGlobalErrorHandlers,
+  resetInitialization,
+  handleUnhandledError,
+  handleUnhandledRejection,
   expressErrorHandler,
 };

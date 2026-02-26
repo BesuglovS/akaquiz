@@ -6,6 +6,11 @@ const {
   asyncErrorHandler,
   logError,
   initGlobalErrorHandlers,
+  cleanupGlobalErrorHandlers,
+  resetInitialization,
+  handleUnhandledError,
+  handleUnhandledRejection,
+  expressErrorHandler,
 } = require("../../../src/middleware/errorHandler");
 
 // Mock console methods
@@ -37,6 +42,10 @@ describe("errorHandler middleware", () => {
   afterEach(() => {
     // Restore original console
     global.console = originalConsole;
+    // Cleanup global error handlers to prevent memory leak warnings
+    cleanupGlobalErrorHandlers();
+    // Reset initialization flag for next test
+    resetInitialization();
   });
 
   describe("ERROR_TYPES", () => {
@@ -291,6 +300,186 @@ describe("errorHandler middleware", () => {
 
       expect(consoleSpy.log).toHaveBeenCalledWith(
         expect.stringContaining("Глобальные обработчики ошибок инициализированы"),
+      );
+    });
+
+    test("should not add duplicate handlers when called multiple times", () => {
+      // First call
+      initGlobalErrorHandlers();
+      const listenerCountAfterFirst = process.listenerCount("uncaughtException");
+
+      // Second call - should not add more listeners
+      initGlobalErrorHandlers();
+      const listenerCountAfterSecond = process.listenerCount("uncaughtException");
+
+      expect(listenerCountAfterFirst).toBe(listenerCountAfterSecond);
+    });
+  });
+
+  describe("cleanupGlobalErrorHandlers", () => {
+    test("should remove event listeners when called after initialization", () => {
+      initGlobalErrorHandlers();
+      const listenerCountAfterInit = process.listenerCount("uncaughtException");
+
+      cleanupGlobalErrorHandlers();
+      const listenerCountAfterCleanup = process.listenerCount("uncaughtException");
+
+      expect(listenerCountAfterCleanup).toBeLessThan(listenerCountAfterInit);
+    });
+
+    test("should not throw when called without initialization", () => {
+      expect(() => {
+        cleanupGlobalErrorHandlers();
+      }).not.toThrow();
+    });
+
+    test("should allow re-initialization after cleanup", () => {
+      initGlobalErrorHandlers();
+      cleanupGlobalErrorHandlers();
+
+      // Should be able to initialize again
+      expect(() => {
+        initGlobalErrorHandlers();
+      }).not.toThrow();
+    });
+  });
+
+  describe("resetInitialization", () => {
+    test("should reset initialization flag", () => {
+      initGlobalErrorHandlers();
+      cleanupGlobalErrorHandlers();
+      resetInitialization();
+
+      // Should be able to initialize again and log message
+      initGlobalErrorHandlers();
+      expect(consoleSpy.log).toHaveBeenCalledWith(
+        expect.stringContaining("Глобальные обработчики ошибок инициализированы"),
+      );
+    });
+  });
+
+  describe("handleUnhandledError", () => {
+    test("should log unhandled error in development mode", () => {
+      process.env.NODE_ENV = "development";
+
+      // Trigger the handler directly
+      const error = new Error("Test unhandled error");
+      handleUnhandledError(error);
+
+      expect(consoleSpy.error).toHaveBeenCalled();
+    });
+
+    test("should not log stack trace in production mode", () => {
+      process.env.NODE_ENV = "production";
+
+      const error = new Error("Test unhandled error");
+      handleUnhandledError(error);
+
+      // Should call error for logError, but not for "Unhandled error details"
+      const errorCalls = consoleSpy.error.mock.calls;
+      const hasUnhandledDetails = errorCalls.some((call) =>
+        call.some((arg) => typeof arg === "string" && arg.includes("Unhandled error details")),
+      );
+      expect(hasUnhandledDetails).toBe(false);
+    });
+  });
+
+  describe("handleUnhandledRejection", () => {
+    test("should log unhandled rejection", () => {
+      const event = {
+        reason: "Test rejection reason",
+        promise: Promise.resolve(),
+      };
+
+      handleUnhandledRejection(event);
+
+      expect(consoleSpy.error).toHaveBeenCalled();
+    });
+  });
+
+  describe("expressErrorHandler", () => {
+    let mockReq;
+    let mockRes;
+    let mockNext;
+
+    beforeEach(() => {
+      mockReq = {
+        path: "/test/path",
+        method: "POST",
+      };
+      mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      };
+      mockNext = jest.fn();
+    });
+
+    test("should handle error with default status code", () => {
+      const err = new Error("Test express error");
+
+      expressErrorHandler(err, mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({
+            type: ERROR_TYPES.INTERNAL,
+            message: "Test express error",
+          }),
+        }),
+      );
+    });
+
+    test("should handle error with custom status code", () => {
+      const err = new Error("Not found");
+      err.statusCode = 404;
+
+      expressErrorHandler(err, mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+    });
+
+    test("should include stack trace in development mode", () => {
+      process.env.NODE_ENV = "development";
+      const err = new Error("Dev error");
+
+      expressErrorHandler(err, mockReq, mockRes, mockNext);
+
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({
+            details: expect.objectContaining({
+              path: "/test/path",
+              method: "POST",
+              stack: expect.any(String),
+            }),
+          }),
+        }),
+      );
+    });
+
+    test("should not include stack trace in production mode", () => {
+      process.env.NODE_ENV = "production";
+      const err = new Error("Prod error");
+
+      expressErrorHandler(err, mockReq, mockRes, mockNext);
+
+      const jsonCall = mockRes.json.mock.calls[0][0];
+      expect(jsonCall.error.details).toBeUndefined();
+    });
+
+    test("should use default message when error has no message", () => {
+      const err = new Error();
+
+      expressErrorHandler(err, mockReq, mockRes, mockNext);
+
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({
+            message: "Произошла ошибка на сервере",
+          }),
+        }),
       );
     });
   });

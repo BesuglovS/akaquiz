@@ -423,4 +423,251 @@ describe("socketRoutes integration", () => {
       // It just removes the socket from activeSockets
     });
   });
+
+  describe("config handling", () => {
+    test("should send config on getConfig event", () => {
+      const getConfigHandler = mockSocket.on.mock.calls.find((call) => call[0] === "getConfig")[1];
+
+      getConfigHandler();
+
+      expect(mockSocket.emit).toHaveBeenCalledWith("configData", expect.any(Object));
+    });
+  });
+
+  describe("pause/resume game", () => {
+    beforeEach(() => {
+      mockSocket.isHost = true;
+      gameService.isCurrentQuestionActive.mockReturnValue(false);
+    });
+
+    test("should not toggle pause when question is not active", () => {
+      const togglePauseHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "togglePause",
+      )[1];
+
+      togglePauseHandler();
+
+      expect(gameService.togglePause).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("export results to XLSX", () => {
+    beforeEach(() => {
+      mockSocket.isHost = true;
+    });
+
+    test("should export results to XLSX format", () => {
+      // Mock a Buffer for XLSX
+      const mockBuffer = Buffer.from("mock xlsx content");
+      gameService.exportResults.mockReturnValue(mockBuffer);
+
+      const exportResultsHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "exportResults",
+      )[1];
+
+      exportResultsHandler("xlsx");
+
+      expect(gameService.exportResults).toHaveBeenCalledWith("xlsx");
+      expect(mockSocket.emit).toHaveBeenCalledWith(
+        "xlsxExportReady",
+        expect.objectContaining({
+          data: expect.any(String), // base64 encoded
+          filename: expect.stringContaining(".xlsx"),
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+      );
+    });
+  });
+
+  describe("host authentication edge cases", () => {
+    test("should reject empty password with validation error", () => {
+      process.env.HOST_PASSWORD = "test-password";
+
+      const authenticateHostHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "authenticateHost",
+      )[1];
+
+      authenticateHostHandler("");
+
+      // Empty password fails validation first, emits error event
+      expect(mockSocket.emit).toHaveBeenCalledWith(
+        "error",
+        expect.objectContaining({
+          type: "SOCKET_ERROR",
+          message: "Пароль должен быть строкой",
+        }),
+      );
+    });
+  });
+
+  describe("non-host access restrictions", () => {
+    test("should ignore getQuizList from non-host", () => {
+      mockSocket.isHost = false;
+
+      const getQuizListHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "getQuizList",
+      )[1];
+
+      getQuizListHandler();
+
+      // Should not emit quizList
+      expect(mockSocket.emit).not.toHaveBeenCalledWith("quizList", expect.anything());
+    });
+
+    test("should ignore selectQuiz from non-host", () => {
+      mockSocket.isHost = false;
+
+      const selectQuizHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "selectQuiz",
+      )[1];
+
+      selectQuizHandler({ fileName: "test.txt", shuffle: false });
+
+      expect(gameService.loadQuiz).not.toHaveBeenCalled();
+    });
+
+    test("should ignore nextQuestion from non-host", () => {
+      mockSocket.isHost = false;
+
+      const nextQuestionHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "nextQuestion",
+      )[1];
+
+      nextQuestionHandler();
+
+      expect(gameService.getNextQuestion).not.toHaveBeenCalled();
+    });
+
+    test("should ignore resetGame from non-host", () => {
+      mockSocket.isHost = false;
+
+      const resetGameHandler = mockSocket.on.mock.calls.find((call) => call[0] === "resetGame")[1];
+
+      resetGameHandler();
+
+      expect(gameService.resetGame).not.toHaveBeenCalled();
+    });
+
+    test("should ignore getAnalytics from non-host", () => {
+      mockSocket.isHost = false;
+
+      const getAnalyticsHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "getAnalytics",
+      )[1];
+
+      getAnalyticsHandler();
+
+      expect(gameService.getAnalytics).not.toHaveBeenCalled();
+    });
+
+    test("should ignore exportResults from non-host", () => {
+      mockSocket.isHost = false;
+
+      const exportResultsHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "exportResults",
+      )[1];
+
+      exportResultsHandler("csv");
+
+      expect(gameService.exportResults).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("quiz finished", () => {
+    beforeEach(() => {
+      mockSocket.isHost = true;
+      gameService.isCurrentQuestionActive.mockReturnValue(false);
+    });
+
+    test("should emit quizFinished when no more questions", () => {
+      gameService.getNextQuestion.mockReturnValue(null);
+      gameService.getAllPlayersScores.mockReturnValue({ player1: 100, player2: 50 });
+
+      const nextQuestionHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "nextQuestion",
+      )[1];
+
+      nextQuestionHandler();
+
+      expect(mockIo.emit).toHaveBeenCalledWith("quizFinished", {
+        player1: 100,
+        player2: 50,
+      });
+    });
+  });
+
+  describe("submit answer edge cases", () => {
+    beforeEach(() => {
+      mockSocket.nickname = "test-player";
+      gameService.isCurrentQuestionActive.mockReturnValue(true);
+      gameService.currentQuestionIndex = 0;
+      gameService.questionStartTime = Date.now() - 5000;
+      gameService.quizData = [
+        {
+          question: "Test question?",
+          options: [{ text: "Option 1" }, { text: "Option 2" }],
+          correct: 0,
+        },
+      ];
+    });
+
+    test("should not submit answer without nickname", () => {
+      mockSocket.nickname = null;
+
+      const submitAnswerHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "submitAnswer",
+      )[1];
+
+      submitAnswerHandler(0);
+
+      expect(gameService.processAnswer).not.toHaveBeenCalled();
+    });
+
+    test("should not submit answer with invalid index", () => {
+      const submitAnswerHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "submitAnswer",
+      )[1];
+
+      // Index out of range
+      submitAnswerHandler(10);
+
+      expect(gameService.processAnswer).not.toHaveBeenCalled();
+    });
+
+    test("should not submit answer with negative index", () => {
+      const submitAnswerHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "submitAnswer",
+      )[1];
+
+      submitAnswerHandler(-1);
+
+      expect(gameService.processAnswer).not.toHaveBeenCalled();
+    });
+
+    test("should not submit answer when time exceeded", () => {
+      // Set question start time to more than time limit ago
+      gameService.questionStartTime = Date.now() - 20000; // 20 seconds ago
+
+      const submitAnswerHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === "submitAnswer",
+      )[1];
+
+      submitAnswerHandler(0);
+
+      expect(gameService.processAnswer).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("player list update", () => {
+    test("should emit playerListUpdate after player joins", () => {
+      const joinHandler = mockSocket.on.mock.calls.find((call) => call[0] === "join")[1];
+
+      joinHandler("new-player");
+
+      expect(mockIo.emit).toHaveBeenCalledWith(
+        "playerListUpdate",
+        expect.arrayContaining(["new-player"]),
+      );
+    });
+  });
 });

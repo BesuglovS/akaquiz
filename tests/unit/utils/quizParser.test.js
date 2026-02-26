@@ -1,6 +1,12 @@
 const fs = require("fs");
 const path = require("path");
-const { loadQuizFile, shuffleArray, clearCache } = require("../../../src/utils/quizParser");
+const {
+  loadQuizFile,
+  loadQuizFileAsync,
+  loadQuizFileSync,
+  shuffleArray,
+  clearCache,
+} = require("../../../src/utils/quizParser");
 
 describe("quizParser", () => {
   const testQuizFile = path.join(__dirname, "../../../quizzes/example.txt");
@@ -168,6 +174,236 @@ No proper structure`;
       const shuffled = shuffleArray(original);
 
       expect(shuffled.sort()).toEqual(original.sort());
+    });
+  });
+
+  describe("loadQuizFileAsync", () => {
+    beforeEach(() => {
+      clearCache("example.txt");
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(testQuizFile)) {
+        fs.unlinkSync(testQuizFile);
+      }
+      clearCache("example.txt");
+    });
+
+    test("should load quiz file asynchronously", async () => {
+      fs.writeFileSync(
+        testQuizFile,
+        `Вопрос: Async test question?
+Варианты:
+Option A
+Option B
+Ответ: 2`,
+      );
+
+      const result = await loadQuizFileAsync("example.txt");
+
+      expect(result).toBeDefined();
+      expect(Array.isArray(result)).toBe(true);
+      expect(result[0].question).toBe(" Async test question?");
+      expect(result[0].options).toHaveLength(2);
+      expect(result[0].correct).toBe(1);
+    });
+
+    test("should cache loaded quiz", async () => {
+      fs.writeFileSync(
+        testQuizFile,
+        `Вопрос: Cached question?
+Варианты:
+Option 1
+Ответ: 1`,
+      );
+
+      // First load
+      const result1 = await loadQuizFileAsync("example.txt");
+      // Second load should return cached result
+      const result2 = await loadQuizFileAsync("example.txt");
+
+      expect(result1).toBe(result2); // Same reference (cached)
+    });
+
+    test("should throw error for non-existent file", async () => {
+      await expect(loadQuizFileAsync("non-existent-async.txt")).rejects.toThrow();
+    });
+  });
+
+  describe("loadQuizFileSync", () => {
+    beforeEach(() => {
+      clearCache("example.txt");
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(testQuizFile)) {
+        fs.unlinkSync(testQuizFile);
+      }
+      clearCache("example.txt");
+    });
+
+    test("should return cached result if available", () => {
+      fs.writeFileSync(
+        testQuizFile,
+        `Вопрос: Cached sync question?
+Варианты:
+Option 1
+Ответ: 1`,
+      );
+
+      // First load
+      const result1 = loadQuizFileSync("example.txt");
+      // Second load should return cached result
+      const result2 = loadQuizFileSync("example.txt");
+
+      expect(result1).toBe(result2); // Same reference
+    });
+  });
+
+  describe("clearCache", () => {
+    test("should clear specific file from cache", () => {
+      fs.writeFileSync(
+        testQuizFile,
+        `Вопрос: Test?
+Варианты:
+A
+Ответ: 1`,
+      );
+
+      loadQuizFile("example.txt");
+      clearCache("example.txt");
+
+      // After clearing, should load fresh data
+      const result = loadQuizFile("example.txt");
+      expect(result).toBeDefined();
+    });
+
+    test("should clear entire cache when no filename provided", () => {
+      fs.writeFileSync(
+        testQuizFile,
+        `Вопрос: Test?
+Варианты:
+A
+Ответ: 1`,
+      );
+
+      loadQuizFile("example.txt");
+      clearCache(); // Clear all
+
+      // Cache should be empty
+      expect(() => loadQuizFile("example.txt")).toBeDefined();
+    });
+  });
+
+  describe("image handling", () => {
+    beforeEach(() => {
+      clearCache("example.txt");
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(testQuizFile)) {
+        fs.unlinkSync(testQuizFile);
+      }
+      clearCache("example.txt");
+    });
+
+    test("should handle external image URLs (http)", () => {
+      const quizWithExternalImage = `Вопрос: Question [img:http://example.com/image.jpg]
+Варианты:
+Option 1
+Ответ: 1`;
+
+      fs.writeFileSync(testQuizFile, quizWithExternalImage);
+      const result = loadQuizFile("example.txt");
+
+      expect(result[0].questionImg).toBe("http://example.com/image.jpg");
+    });
+
+    test("should handle external image URLs (https)", () => {
+      const quizWithHttpsImage = `Вопрос: Question [img:https://example.com/image.jpg]
+Варианты:
+Option 1
+Ответ: 1`;
+
+      fs.writeFileSync(testQuizFile, quizWithHttpsImage);
+      const result = loadQuizFile("example.txt");
+
+      expect(result[0].questionImg).toBe("https://example.com/image.jpg");
+    });
+
+    test("should handle multiple images in question text", () => {
+      const quizWithMultipleImages = `Вопрос: Question [img:first.jpg] [img:second.jpg]
+Варианты:
+Option 1
+Ответ: 1`;
+
+      fs.writeFileSync(testQuizFile, quizWithMultipleImages);
+      const result = loadQuizFile("example.txt");
+
+      // Should use first image and remove all img tags from text
+      expect(result[0].questionImg).toBe("/media/first.jpg");
+      expect(result[0].question).toBe("Question");
+    });
+  });
+
+  describe("answer parsing edge cases", () => {
+    beforeEach(() => {
+      clearCache("example.txt");
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(testQuizFile)) {
+        fs.unlinkSync(testQuizFile);
+      }
+      clearCache("example.txt");
+    });
+
+    test("should handle invalid answer (NaN)", () => {
+      const quizWithInvalidAnswer = `Вопрос: Test question?
+Варианты:
+Option 1
+Option 2
+Ответ: invalid`;
+
+      fs.writeFileSync(testQuizFile, quizWithInvalidAnswer);
+      const result = loadQuizFile("example.txt");
+
+      expect(result[0].correct).toBe(-1);
+    });
+
+    test("should handle missing answer", () => {
+      const quizWithoutAnswer = `Вопрос: Test question?
+Варианты:
+Option 1
+Option 2`;
+
+      fs.writeFileSync(testQuizFile, quizWithoutAnswer);
+      const result = loadQuizFile("example.txt");
+
+      expect(result[0].correct).toBe(-1);
+    });
+
+    test("should handle multiple questions", () => {
+      const multiQuestionQuiz = `Вопрос: First question?
+Варианты:
+A1
+A2
+Ответ: 1
+
+Вопрос: Second question?
+Варианты:
+B1
+B2
+Ответ: 2`;
+
+      fs.writeFileSync(testQuizFile, multiQuestionQuiz);
+      const result = loadQuizFile("example.txt");
+
+      expect(result).toHaveLength(2);
+      expect(result[0].question).toBe(" First question?");
+      expect(result[1].question).toBe(" Second question?");
+      expect(result[0].correct).toBe(0);
+      expect(result[1].correct).toBe(1);
     });
   });
 });

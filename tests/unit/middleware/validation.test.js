@@ -34,6 +34,13 @@ describe("validation middleware", () => {
       expect(result.isValid).toBe(false);
       expect(result.error).toContain("должен быть строкой");
     });
+
+    test("should reject whitespace-only password", () => {
+      const result = validateHostPassword("   ");
+
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain("Пароль не может быть пустым");
+    });
   });
 
   describe("validateNickname", () => {
@@ -204,6 +211,79 @@ describe("validation middleware", () => {
 
       expect(result.isValid).toBe(false);
       expect(result.error).toContain("должно быть целым числом");
+    });
+
+    test("should accept questionCount as 'Все'", () => {
+      const result = validateQuizSelection({
+        fileName: "test.txt",
+        shuffle: true,
+        questionCount: "Все",
+      });
+
+      expect(result.isValid).toBe(true);
+    });
+
+    test("should validate valid timeLimit", () => {
+      const result = validateQuizSelection({
+        fileName: "test.txt",
+        shuffle: true,
+        timeLimit: 30,
+      });
+
+      expect(result.isValid).toBe(true);
+    });
+
+    test("should reject timeLimit below minimum", () => {
+      const result = validateQuizSelection({
+        fileName: "test.txt",
+        shuffle: true,
+        timeLimit: 3,
+      });
+
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain("Время ответа должно быть от 5 до 300 секунд");
+    });
+
+    test("should reject timeLimit above maximum", () => {
+      const result = validateQuizSelection({
+        fileName: "test.txt",
+        shuffle: true,
+        timeLimit: 400,
+      });
+
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain("Время ответа должно быть от 5 до 300 секунд");
+    });
+
+    test("should reject non-integer timeLimit", () => {
+      const result = validateQuizSelection({
+        fileName: "test.txt",
+        shuffle: true,
+        timeLimit: 30.5,
+      });
+
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain("Время ответа должно быть целым числом");
+    });
+
+    test("should accept null timeLimit", () => {
+      const result = validateQuizSelection({
+        fileName: "test.txt",
+        shuffle: true,
+        timeLimit: null,
+      });
+
+      expect(result.isValid).toBe(true);
+    });
+
+    test("should accept null questionCount", () => {
+      const result = validateQuizSelection({
+        fileName: "test.txt",
+        shuffle: true,
+        questionCount: null,
+      });
+
+      expect(result.isValid).toBe(true);
     });
   });
 

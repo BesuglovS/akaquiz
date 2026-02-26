@@ -317,4 +317,232 @@ describe("GameService", () => {
       expect(scores).toEqual({});
     });
   });
+
+  describe("pause/resume functionality", () => {
+    beforeEach(() => {
+      gameService.quizData = mockQuizData;
+      gameService.currentQuestionIndex = 0;
+      gameService.isQuestionActive = true;
+    });
+
+    test("should pause game when togglePause called", () => {
+      const result = gameService.togglePause();
+
+      expect(result).toBe(true);
+      expect(gameService.isPaused).toBe(true);
+      expect(gameService.pauseStartTime).toBeGreaterThan(0);
+    });
+
+    test("should resume game when togglePause called again", async () => {
+      gameService.togglePause(); // Pause
+
+      // Wait a bit to ensure some paused time
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const result = gameService.togglePause(); // Resume
+
+      expect(result).toBe(false);
+      expect(gameService.isPaused).toBe(false);
+      expect(gameService.totalPausedTime).toBeGreaterThanOrEqual(0);
+    });
+
+    test("should not toggle pause when question is not active", () => {
+      gameService.isQuestionActive = false;
+
+      const result = gameService.togglePause();
+
+      expect(result).toBe(false);
+      expect(gameService.isPaused).toBe(false);
+    });
+
+    test("should check if game is paused", () => {
+      expect(gameService.isGamePaused()).toBe(false);
+
+      gameService.togglePause();
+      expect(gameService.isGamePaused()).toBe(true);
+    });
+  });
+
+  describe("getRemainingTime", () => {
+    beforeEach(() => {
+      gameService.quizData = mockQuizData;
+      gameService.currentQuestionIndex = 0;
+      gameService.isQuestionActive = true;
+      gameService.questionStartTime = Date.now() - 5000; // 5 seconds ago
+    });
+
+    test("should return remaining time for active question", () => {
+      const remainingTime = gameService.getRemainingTime();
+
+      expect(remainingTime).toBeGreaterThan(0);
+      expect(remainingTime).toBeLessThanOrEqual(15);
+    });
+
+    test("should return 0 when question is not active", () => {
+      gameService.isQuestionActive = false;
+
+      const remainingTime = gameService.getRemainingTime();
+
+      expect(remainingTime).toBe(0);
+    });
+
+    test("should use custom time limit", () => {
+      gameService.customTimeLimit = 30;
+      gameService.questionStartTime = Date.now() - 10000; // 10 seconds ago
+
+      const remainingTime = gameService.getRemainingTime();
+
+      expect(remainingTime).toBeGreaterThan(15);
+      expect(remainingTime).toBeLessThanOrEqual(30);
+    });
+  });
+
+  describe("loadQuiz with custom time limit", () => {
+    test("should store custom time limit", () => {
+      loadQuizFile.mockReturnValue(mockQuizData);
+      shuffleArray.mockImplementation((arr) => arr);
+
+      const result = gameService.loadQuiz("test.txt", false, null, 30);
+
+      expect(result.success).toBe(true);
+      expect(result.timeLimit).toBe(30);
+      expect(gameService.customTimeLimit).toBe(30);
+    });
+
+    test("should use default time limit when not specified", () => {
+      loadQuizFile.mockReturnValue(mockQuizData);
+      shuffleArray.mockImplementation((arr) => arr);
+
+      const result = gameService.loadQuiz("test.txt", false, null, null);
+
+      expect(result.success).toBe(true);
+      expect(result.timeLimit).toBe(15); // Default from config
+    });
+  });
+
+  describe("getNextQuestion with question image", () => {
+    test("should include question image in response", () => {
+      const quizWithImage = [
+        {
+          question: "Question with image?",
+          questionImg: "/media/test.jpg",
+          options: [{ text: "Option 1", img: null }],
+          correct: 0,
+        },
+      ];
+      gameService.quizData = quizWithImage;
+
+      const question = gameService.getNextQuestion();
+
+      expect(question.questionImg).toBe("/media/test.jpg");
+    });
+  });
+
+  describe("getQuestionAnalytics edge cases", () => {
+    test("should return default data for non-existent question index", () => {
+      const analytics = gameService.getQuestionAnalytics(999);
+
+      expect(analytics).toEqual({
+        question: "Нет данных",
+        totalAnswers: 0,
+        correctAnswers: 0,
+        averageResponseTime: 0,
+        responseTimes: [],
+      });
+    });
+
+    test("should return last question analytics when index is -1", () => {
+      gameService.quizData = mockQuizData;
+      gameService.currentQuestionIndex = 0;
+      gameService.isQuestionActive = true;
+      gameService.processAnswer("player1", 0, 5);
+
+      const analytics = gameService.getQuestionAnalytics(-1);
+
+      expect(analytics.totalAnswers).toBe(1);
+      expect(analytics.correctAnswers).toBe(1);
+    });
+
+    test("should return default data when no questions answered", () => {
+      const analytics = gameService.getQuestionAnalytics(-1);
+
+      expect(analytics).toEqual({
+        question: "Нет данных",
+        totalAnswers: 0,
+        correctAnswers: 0,
+        averageResponseTime: 0,
+        responseTimes: [],
+      });
+    });
+  });
+
+  describe("exportResults", () => {
+    test("should export to CSV by default", () => {
+      gameService.scores = { player1: 100 };
+
+      const result = gameService.exportResults();
+
+      expect(typeof result).toBe("string");
+      expect(result).toContain("player1");
+    });
+
+    test("should export to CSV when format is csv", () => {
+      gameService.scores = { player1: 100 };
+
+      const result = gameService.exportResults("csv");
+
+      expect(typeof result).toBe("string");
+      expect(result).toContain("player1");
+    });
+
+    test("should export to XLSX when format is xlsx", () => {
+      gameService.scores = { player1: 100 };
+
+      const result = gameService.exportResults("xlsx");
+
+      expect(Buffer.isBuffer(result)).toBe(true);
+    });
+  });
+
+  describe("processAnswer edge cases", () => {
+    beforeEach(() => {
+      gameService.quizData = mockQuizData;
+      gameService.currentQuestionIndex = 0;
+      gameService.isQuestionActive = true;
+      gameService.questionStartTime = Date.now() - 10000; // 10 seconds ago
+    });
+
+    test("should not process answer when no current question", () => {
+      gameService.quizData = [];
+      gameService.currentQuestionIndex = 0;
+      gameService.isQuestionActive = true;
+
+      const result = gameService.processAnswer("player1", 0, 5);
+
+      expect(result.success).toBe(false);
+      expect(result.reason).toBe("no_question");
+    });
+
+    test("should use custom time limit for answer validation", () => {
+      gameService.customTimeLimit = 30;
+
+      // Answer within custom time limit (20s < 30s)
+      const result = gameService.processAnswer("player1", 0, 20);
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("loadQuiz with questionCount 'Все'", () => {
+    test("should not limit questions when questionCount is 'Все'", () => {
+      loadQuizFile.mockReturnValue(mockQuizData);
+      shuffleArray.mockImplementation((arr) => arr);
+
+      const result = gameService.loadQuiz("test.txt", false, "Все");
+
+      expect(result.success).toBe(true);
+      expect(result.questionCount).toBe(2);
+      expect(gameService.quizData).toHaveLength(2);
+    });
+  });
 });
